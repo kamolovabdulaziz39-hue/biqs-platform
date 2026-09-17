@@ -647,10 +647,10 @@
       <form id="form-create-issue" class="modal-form">
         <div class="form-row-2">
           <div class="form-group">
-            <label for="issue-reporter-name">Ф.И.О. заявителя (Рабочий / Мастер / Бригадир)</label>
+            <label for="issue-reporter-name" data-i18n="lblReporterName">Ф.И.О. заявителя (Рабочий / Мастер / Бригадир)</label>
             <div class="input-wrapper">
               <i class="fa-solid fa-user-pen"></i>
-              <input type="text" id="issue-reporter-name" class="form-input" placeholder="Введите ваше Ф.И.О..." required>
+              <input type="text" id="issue-reporter-name" class="form-input" data-i18n-ph="phReporterName" placeholder="Введите ваше Ф.И.О..." required>
             </div>
           </div>
 
@@ -677,14 +677,14 @@
           <div class="form-group">
             <label for="issue-severity" data-i18n="lblSeverity">Уровень критичности</label>
             <select id="issue-severity" class="form-input" required>
-              <option value="critical_stop">🚨 Критическая (Остановка линии / Line Stop)</option>
-              <option value="major" selected>⚠️ Значительное отклонение (Major)</option>
-              <option value="minor">ℹ️ Незначительное замечание (Minor)</option>
+              <option value="critical_stop" data-i18n="optSeverityStop">🚨 Критическая (Остановка линии / Line Stop)</option>
+              <option value="major" selected data-i18n="optSeverityMajor">⚠️ Значительное отклонение (Major)</option>
+              <option value="minor" data-i18n="optSeverityMinor">ℹ️ Незначительное замечание (Minor)</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label for="issue-downtime-minutes">Время простоя линии (минуты)</label>
+            <label for="issue-downtime-minutes" data-i18n="lblDowntimeMinutes">Время простоя линии (минуты)</label>
             <input type="number" id="issue-downtime-minutes" class="form-input" placeholder="0" min="0" value="0">
           </div>
         </div>
@@ -701,7 +701,7 @@
             <button type="button" class="btn-photo-pick" onclick="document.getElementById('issue-photo-file').click()">
               <i class="fa-solid fa-camera"></i> <span data-i18n="btnSnapCamera">Сделать снимок / Загрузить файл</span>
             </button>
-            <input type="url" id="issue-photo-url" class="form-input" placeholder="https://... фото дефекта" style="flex: 1;">
+            <input type="url" id="issue-photo-url" class="form-input" data-i18n-ph="phPhotoUrl" placeholder="https://... фото дефекта" style="flex: 1;">
           </div>
           <div id="issue-photo-preview" class="photo-preview-box hidden">
             <img id="issue-preview-img" src="" alt="Предпросмотр фото дефекта">
@@ -710,7 +710,7 @@
         </div>
 
         <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-new-issue')">Отмена</button>
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-new-issue')" data-i18n="btnCancel">Отмена</button>
           <button type="submit" class="btn-action-primary">
             <i class="fa-solid fa-paper-plane"></i>
             <span data-i18n="btnSubmitIssue">Зарегистрировать проблему</span>
@@ -769,16 +769,16 @@
 
         <div class="form-group">
           <label data-i18n="violationPhotosLabel">Фотофиксация выявленных замечаний (URL):</label>
-          <input type="url" id="audit-violation-photo" class="form-input" placeholder="https://... ссылка на фото отклонения">
+          <input type="url" id="audit-violation-photo" class="form-input" data-i18n-ph="phAuditViolationPhoto" placeholder="https://... ссылка на фото отклонения">
         </div>
 
         <div class="form-group">
           <label data-i18n="auditCommentsLabel">Заключение инспектора качества:</label>
-          <textarea id="audit-comments" class="form-input" rows="2" placeholder="Итоговые выводы по аудиту..."></textarea>
+          <textarea id="audit-comments" class="form-input" rows="2" data-i18n-ph="phAuditComments" placeholder="Итоговые выводы по аудиту..."></textarea>
         </div>
 
         <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-biqs-audit')">Отмена</button>
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-biqs-audit')" data-i18n="btnCancel">Отмена</button>
           <button type="submit" class="btn-action-primary btn-accent-emerald">
             <i class="fa-solid fa-check"></i>
             <span data-i18n="btnSubmitAudit">Завершить обход и зафиксировать в системе</span>
@@ -803,7 +803,7 @@
           <input type="text" id="assign-input-name" class="form-input" data-i18n-ph="phAssigneeName" placeholder="Например: Карим Азизов" required>
         </div>
         <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-assign-issue')">Отмена</button>
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-assign-issue')" data-i18n="btnCancel">Отмена</button>
           <button type="submit" class="btn-action-primary">
             <span data-i18n="btnConfirmAssign">Назначить ответственного</span>
           </button>
@@ -833,14 +833,14 @@
             <button type="button" class="btn-photo-pick" onclick="document.getElementById('verify-photo-file').click()">
               <i class="fa-solid fa-camera"></i> <span data-i18n="btnSnapCamera">Сделать снимок / Загрузить файл</span>
             </button>
-            <input type="url" id="verify-photo-url" class="form-input" placeholder="https://... ссылка на фото подтверждения" style="flex: 1;">
+            <input type="url" id="verify-photo-url" class="form-input" data-i18n-ph="phVerifyPhotoUrl" placeholder="https://... ссылка на фото подтверждения" style="flex: 1;">
           </div>
           <div id="verify-photo-preview" class="photo-preview-box hidden">
             <img id="verify-preview-img" src="" alt="Фото исправленного узла">
           </div>
         </div>
         <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-verify-issue')">Отмена</button>
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-verify-issue')" data-i18n="btnCancel">Отмена</button>
           <button type="submit" class="btn-action-primary btn-accent-emerald">
             <span data-i18n="btnConfirmVerify">Отправить на проверку и закрытие</span>
           </button>
@@ -885,7 +885,7 @@
         </div>
 
         <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-create-key')">Отмена</button>
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-create-key')" data-i18n="btnCancel">Отмена</button>
           <button type="submit" class="btn-action-primary btn-accent-gold">
             <span data-i18n="btnSaveKey">Сгенерировать и скопировать ключ</span>
           </button>
@@ -900,30 +900,30 @@
       <button class="modal-close" onclick="closeModal('modal-create-line')"><i class="fa-solid fa-xmark"></i></button>
       <h3 class="modal-header-title">
         <i class="fa-solid fa-industry" style="color: var(--primary-blue);"></i>
-        <span>Добавление новой линии сборки</span>
+        <span data-i18n="modalCreateLineTitle">Добавление новой линии сборки</span>
       </h3>
       <form id="form-create-line" class="modal-form">
         <div class="form-group">
-          <label for="line-dept-select">Производственный цех</label>
+          <label for="line-dept-select" data-i18n="lblLineDept">Производственный цех</label>
           <select id="line-dept-select" class="form-input" required>
             <!-- Populated dynamically -->
           </select>
         </div>
 
         <div class="form-group">
-          <label for="line-name-input">Наименование линии / Поста сборки</label>
-          <input type="text" id="line-name-input" class="form-input" placeholder="Например: Линия Cobalt #2" required>
+          <label for="line-name-input" data-i18n="lblLineName">Наименование линии / Поста сборки</label>
+          <input type="text" id="line-name-input" class="form-input" data-i18n-ph="phLineNameAdmin" placeholder="Например: Линия Cobalt #2" required>
         </div>
 
         <div class="form-group">
-          <label for="line-desc-input">Описание оборудования / Участка</label>
-          <input type="text" id="line-desc-input" class="form-input" placeholder="Краткое описание технологической линии...">
+          <label for="line-desc-input" data-i18n="lblLineDesc">Описание оборудования / Участка</label>
+          <input type="text" id="line-desc-input" class="form-input" data-i18n-ph="phLineDescAdmin" placeholder="Краткое описание технологической линии...">
         </div>
 
         <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-create-line')">Отмена</button>
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-create-line')" data-i18n="btnCancel">Отмена</button>
           <button type="submit" class="btn-action-primary">
-            <span>Создать линию сборки</span>
+            <span data-i18n="btnCreateLineSubmit">Создать линию сборки</span>
           </button>
         </div>
       </form>
@@ -934,7 +934,7 @@
   <div id="modal-photo-viewer" class="modal-overlay hidden">
     <div class="modal-card modal-card-photo">
       <button class="modal-close" onclick="closeModal('modal-photo-viewer')"><i class="fa-solid fa-xmark"></i></button>
-      <h3 id="photo-viewer-title" style="font-size: 15px; font-weight: 700; margin-bottom: 10px;">Фотоматериал дефекта</h3>
+      <h3 id="photo-viewer-title" style="font-size: 15px; font-weight: 700; margin-bottom: 10px;" data-i18n="photoViewerTitle">Фотоматериал дефекта</h3>
       <div style="text-align: center; background: #0b1329; border-radius: 8px; padding: 10px;">
         <img id="photo-viewer-img" src="" style="max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 6px;" alt="Фото">
       </div>
