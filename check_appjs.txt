@@ -1,0 +1,3 @@
+﻿app.js size: 43395
+First 300:
+'// ===== INDUSTRIAL WEB PLATFORM JAVASCRIPT FOR JV UZ-TONG HONG CO. =====\r\n\r\nlet currentUser = null;\r\nlet allDepartments = [];\r\nlet allIssues = [];\r\nlet chartStatusInstance = null;\r\nlet chartBiqsInstance = null;\r\n\r\nlet currentIssuePhotoUrl = "";\r\nlet currentVerifyPhotoUrl = "";\r\n\r\nconst BIQS_STANDAR'

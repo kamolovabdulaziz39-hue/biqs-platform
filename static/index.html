@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>СП «Uz-Tong Hong Co.» | Платформа оперативного контроля и качества BIQS</title>
+  <link rel="icon" type="image/png" href="/static/logo_banner.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- ==================== AUTHENTICATION SCREEN ==================== -->
+  <div id="auth-screen" class="auth-container">
+    <div class="auth-card">
+      
+      <!-- Top Language Selector -->
+      <div class="auth-card-top-bar">
+        <div class="auth-lang-picker">
+          <button type="button" class="lang-btn" data-lang="uz" onclick="setLanguage('uz')">Oʻzbekcha</button>
+          <span class="lang-sep">|</span>
+          <button type="button" class="lang-btn" data-lang="ru" onclick="setLanguage('ru')">Русский</button>
+        </div>
+      </div>
+
+      <!-- Factory Brand Header -->
+      <div class="auth-brand-header">
+        <img src="/static/logo_banner.png" alt="Uz-Tong Hong Co." class="auth-factory-logo">
+        <h1 class="auth-brand-name" data-i18n="brandTitle">СП «Uz-Tong Hong Co.»</h1>
+        <p class="auth-brand-desc" data-i18n="brandSubtitle">Платформа оперативного контроля, аудитов и качества BIQS</p>
+        <div class="factory-loc-pill">
+          <i class="fa-solid fa-industry"></i> <span data-i18n="factoryLocation">г. Андижан, СП ООО «Uz-Tong Hong Co.»</span>
+        </div>
+      </div>
+
+      <div class="auth-card-body">
+
+        <!-- 1. PRIMARY VIEW: LOGIN VIA INVITE CODE (NO USERNAME / PASSWORD FOR WORKERS!) -->
+        <div id="auth-box-invite">
+          <div style="text-align: center; margin-bottom: 16px;">
+            <h2 style="font-size: 16px; font-weight: 800; color: var(--primary-navy);" data-i18n="authInviteTitle">
+              Вход в систему по приглашению
+            </h2>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" data-i18n="authInviteSubtitle">
+              Для доступа введите персональный код, выданный Администратором завода
+            </p>
+          </div>
+
+          <form id="form-invite-login" class="auth-form">
+            <div class="form-group">
+              <label for="input-invite-only-code" data-i18n="lblInviteCodeOnly">Код приглашения (Invite Code)</label>
+              <div class="input-wrapper">
+                <i class="fa-solid fa-ticket"></i>
+                <input type="text" id="input-invite-only-code" class="form-input" style="font-size: 15px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;" data-i18n-ph="phInviteCodeOnly" placeholder="Например: UTH-AUD-9912" required autofocus>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="input-inspector-name" data-i18n="lblInspectorNameOpt">Ваше Ф.И.О. или должность (необязательно)</label>
+              <div class="input-wrapper">
+                <i class="fa-solid fa-user-pen"></i>
+                <input type="text" id="input-inspector-name" class="form-input" data-i18n-ph="phInspectorNameOpt" placeholder="Ф.И.О. проверяющего сотрудника...">
+              </div>
+            </div>
+
+            <div id="invite-login-error" class="error-msg hidden">
+              <i class="fa-solid fa-circle-exclamation"></i>
+              <span id="invite-login-error-text"></span>
+            </div>
+
+            <button type="submit" class="btn-primary-block btn-accent-gold" style="font-size: 15px; padding: 13px;">
+              <i class="fa-solid fa-arrow-right-to-bracket"></i>
+              <span data-i18n="btnEnterByInvite">Войти по коду приглашения</span>
+            </button>
+          </form>
+
+          <div class="invite-notice-pill" style="margin-top: 16px;">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span data-i18n="inviteOnlyWarning">Вход на платформу закрыт. Без персонального кода от Администратора доступ невозможен. Для обычных пользователей открывается только раздел «Аудит качества BIQS».</span>
+          </div>
+
+          <!-- Demo invite code quick chips -->
+          <div class="demo-creds-box">
+            <div class="demo-creds-title">
+              <i class="fa-solid fa-key"></i> <span data-i18n="demoCredsTitle">Коды приглашений для быстрого теста:</span>
+            </div>
+            <div class="demo-chips">
+              <button type="button" class="demo-chip" onclick="fillInviteCode('UTH-AUD-9912')">
+                <strong>UTH-AUD-9912</strong> (Аудитор)
+              </button>
+              <button type="button" class="demo-chip" onclick="fillInviteCode('UTH-ASM-8841')">
+                <strong>UTH-ASM-8841</strong> (Сборочный)
+              </button>
+              <button type="button" class="demo-chip" onclick="fillInviteCode('UTH-WLD-5523')">
+                <strong>UTH-WLD-5523</strong> (Сварка)
+              </button>
+            </div>
+          </div>
+
+          <!-- Bottom link: Switch to Admin login -->
+          <div style="text-align: center; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e2e8f0;">
+            <button type="button" class="link-btn-admin" onclick="toggleAdminAuth(true)">
+              <i class="fa-solid fa-lock"></i> <span data-i18n="linkAdminLogin">Вход для Главного Администратора (по логину и паролю)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. SECONDARY VIEW: ADMIN LOGIN (USERNAME & PASSWORD) -->
+        <div id="auth-box-admin" class="hidden">
+          <div style="text-align: center; margin-bottom: 16px;">
+            <h2 style="font-size: 16px; font-weight: 800; color: var(--primary-navy);" data-i18n="adminLoginTitle">
+              Вход для Администратора завода
+            </h2>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" data-i18n="adminLoginSubtitle">
+              Управление кодами приглашений, пользователями и всей системой
+            </p>
+          </div>
+
+          <form id="form-admin-login" class="auth-form">
+            <div class="form-group">
+              <label for="input-admin-user" data-i18n="lblUsername">Логин Администратора</label>
+              <div class="input-wrapper">
+                <i class="fa-solid fa-user-shield"></i>
+                <input type="text" id="input-admin-user" class="form-input" data-i18n-ph="phUsername" value="admin" required>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="input-admin-pass" data-i18n="lblPassword">Пароль Администратора</label>
+              <div class="input-wrapper">
+                <i class="fa-solid fa-lock"></i>
+                <input type="password" id="input-admin-pass" class="form-input" data-i18n-ph="phPassword" placeholder="Введите пароль..." required>
+              </div>
+            </div>
+
+            <div id="admin-login-error" class="error-msg hidden">
+              <i class="fa-solid fa-circle-exclamation"></i>
+              <span id="admin-login-error-text"></span>
+            </div>
+
+            <button type="submit" class="btn-primary-block">
+              <i class="fa-solid fa-key"></i>
+              <span data-i18n="btnAdminLogin">Войти в панель управления</span>
+            </button>
+          </form>
+
+          <div style="text-align: center; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e2e8f0;">
+            <button type="button" class="link-btn-admin" onclick="toggleAdminAuth(false)">
+              <span data-i18n="linkBackToInvite">← Вернуться к входу по приглашению</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. GUEST / DEMO MODE - bottom of card -->
+        <div style="text-align: center; margin-top: 20px; padding: 12px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 0 0 var(--radius-xl) var(--radius-xl);">
+          <button type="button" onclick="enterGuestMode()" style="background: none; border: none; font-size: 12px; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; transition: all 0.2s;">
+            <i class="fa-solid fa-eye"></i>
+            <span data-i18n="btnGuestView">Гостевой просмотр (Демо-режим для делегаций)</span>
+          </button>
+        </div>
+
+      </div><!-- /auth-card-body -->
+    </div><!-- /auth-card -->
+  </div><!-- /auth-screen -->
+
+
+  <!-- ==================== MAIN DASHBOARD SCREEN ==================== -->
+  <div id="dashboard-screen" class="dashboard-root hidden">
+
+    <!-- Top Universal Header Bar -->
+    <header class="main-header">
+      <div class="header-left">
+        <img src="/static/logo_banner.png" alt="Uz-Tong Hong Co." class="header-logo">
+        <div class="header-brand-info">
+          <div class="brand-line-1">
+            <span class="brand-title-bold" data-i18n="headerBrandTitle">СП «Uz-Tong Hong Co.»</span>
+            <span id="user-dept-badge" class="dept-badge">Все цеха</span>
+          </div>
+          <div class="brand-line-2" data-i18n="headerSubtitle">Оперативный контроль производства & Аудиты стандартов BIQS</div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- Live Instant Language Switcher -->
+        <div class="header-lang-switch">
+          <button type="button" class="lang-btn" data-lang="uz" onclick="setLanguage('uz')">Oʻzbekcha</button>
+          <span class="lang-sep">|</span>
+          <button type="button" class="lang-btn" data-lang="ru" onclick="setLanguage('ru')">Русский</button>
+        </div>
+
+        <button id="btn-export-pdf" class="btn-header-tool" data-i18n-title="btnExportPdf" title="Выгрузить отчёт (PDF)">
+          <i class="fa-solid fa-file-pdf"></i> <span class="hide-mobile" data-i18n="btnExportPdf">PDF / Печать</span>
+        </button>
+
+        <div class="user-pill">
+          <div class="user-avatar-circle">
+            <i class="fa-solid fa-user-check"></i>
+          </div>
+          <div class="user-meta">
+            <div id="user-display-name" class="user-meta-name">Сотрудник</div>
+            <div id="user-display-role" class="user-meta-role">Аудитор</div>
+          </div>
+        </div>
+
+        <button id="btn-logout" class="btn-logout-tool" data-i18n-title="btnLogout" title="Выход">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- GUEST MODE BANNER (visible only for guest role) -->
+    <div id="guest-mode-banner" class="guest-banner hidden">
+      <i class="fa-solid fa-eye"></i>
+      <span data-i18n="guestBannerText">ДЕМО-РЕЖИМ: Только просмотр. Изменение данных недоступно. Это демонстрационный режим для делегаций и проверяющих.</span>
+      <button onclick="location.reload()" style="margin-left: 16px; background: rgba(0,0,0,0.15); border: none; color: inherit; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer;" data-i18n="btnExitGuest">Выйти</button>
+    </div>
+
+    <!-- Navigation Tabs for Modules -->
+
+    <nav class="modules-nav">
+      <!-- Module 1: Visible only for admin/director -->
+      <button id="nav-btn-mod1" class="module-nav-btn hidden" onclick="switchModule('mod1')">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span data-i18n="navModule1">Оперативные проблемы линии</span>
+      </button>
+      <!-- Module 2: ALWAYS VISIBLE TO ALL (Including regular users with invite codes!) -->
+      <button id="nav-btn-mod2" class="module-nav-btn active" onclick="switchModule('mod2')">
+        <i class="fa-solid fa-clipboard-check"></i>
+        <span data-i18n="navModule2">BIQS Аудиты качества</span>
+      </button>
+      <!-- Module 3: Visible only for admin/director -->
+      <button id="nav-btn-mod3" class="module-nav-btn hidden" onclick="switchModule('mod3')">
+        <i class="fa-solid fa-chart-line"></i>
+        <span data-i18n="navModule3">Дашборд Директора</span>
+      </button>
+      <!-- Module 4: Visible only for Admin -->
+      <button id="nav-btn-mod4" class="module-nav-btn hidden" onclick="switchModule('mod4')">
+        <i class="fa-solid fa-user-gear"></i>
+        <span data-i18n="navModule4">Админ: Инвайты и Доступ</span>
+      </button>
+    </nav>
+
+    <!-- Main Dynamic Content Container -->
+    <main class="dashboard-main-container">
+
+      <!-- ==================== MODULE 2: BIQS QUALITY AUDITS (PRIMARY MODULE FOR WORKERS) ==================== -->
+      <section id="section-mod2" class="module-section">
+        <div class="module-header-row">
+          <div>
+            <h2 class="module-title" data-i18n="mod2Title">Модуль №2: Аудиты качества и соблюдение стандартов BIQS</h2>
+            <p class="module-subtitle" data-i18n="mod2Subtitle">Оперативный обход производственных участков с проверкой стандартов GM BIQS и опросом рабочих</p>
+          </div>
+          <div class="module-header-actions">
+            <button id="btn-open-new-audit" class="btn-action-primary btn-accent-emerald" onclick="openNewAuditModal()">
+              <i class="fa-solid fa-clipboard-list"></i>
+              <span data-i18n="btnStartAudit">+ Провести новый аудит обхода</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Audits List -->
+        <div id="audits-list-container" class="audits-grid">
+          <!-- Dynamically populated via app.js -->
+        </div>
+      </section>
+
+      <!-- ==================== MODULE 1: LINE DEFECTS & LIFECYCLE (ADMIN / LEADERSHIP) ==================== -->
+      <section id="section-mod1" class="module-section hidden">
+        <div class="module-header-row">
+          <div>
+            <h2 class="module-title" data-i18n="mod1Title">Модуль №1: Оперативная фиксация и жизненный цикл дефектов</h2>
+            <p class="module-subtitle" data-i18n="mod1Subtitle">Устранение несоответствий на линиях сборки и цехах завода в реальном времени</p>
+          </div>
+          <div class="module-header-actions">
+            <button id="btn-open-report-issue" class="btn-action-primary" onclick="openNewIssueModal()">
+              <i class="fa-solid fa-camera"></i>
+              <span data-i18n="btnReportIssue">+ Зафиксировать проблему на линии</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter & Department Isolation Bar -->
+        <div class="filter-panel">
+          <div class="filter-group">
+            <label for="filter-dept-select">
+              <i class="fa-solid fa-building"></i> <span data-i18n="filterDepartment">Цех/Отдел:</span>
+            </label>
+            <select id="filter-dept-select" class="filter-select" onchange="loadIssues()">
+              <option value="all" data-i18n="filterAllDepts">Все цеха (Сводный вид)</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label for="filter-status-select">
+              <i class="fa-solid fa-filter"></i> <span data-i18n="filterStatus">Статус заявки:</span>
+            </label>
+            <select id="filter-status-select" class="filter-select" onchange="filterIssuesByStatus()">
+              <option value="all" data-i18n="filterAllStatuses">Все статусы</option>
+              <option value="open">1. Зафиксировано</option>
+              <option value="assigned">2. Назначен мастер</option>
+              <option value="in_progress">3. В процессе устранения</option>
+              <option value="verification">4. На проверке (Фото до/после)</option>
+              <option value="closed">5. Устранено и закрыто</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Issues Cards Grid -->
+        <div id="issues-list-container" class="issues-grid">
+          <!-- Dynamically populated via app.js -->
+        </div>
+      </section>
+
+      <!-- ==================== MODULE 3: EXECUTIVE DASHBOARD (ADMIN / LEADERSHIP) ==================== -->
+      <section id="section-mod3" class="module-section hidden">
+        <div class="module-header-row">
+          <div>
+            <h2 class="module-title" data-i18n="mod3Title">Модуль №3: Сводный аналитический дашборд Руководства</h2>
+            <p class="module-subtitle" data-i18n="mod3Subtitle">Мониторинг всех 5 производственных цехов завода СП «Uz-Tong Hong Co.» в реальном времени</p>
+          </div>
+        </div>
+
+        <!-- Executive KPI Counters Grid -->
+        <div class="kpi-counters-grid">
+          <div class="kpi-card">
+            <div class="kpi-icon-box kpi-blue"><i class="fa-solid fa-list-check"></i></div>
+            <div class="kpi-data">
+              <div id="kpi-total-val" class="kpi-num">0</div>
+              <div class="kpi-title" data-i18n="kpiTotalIssues">Всего инцидентов</div>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-icon-box kpi-red"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <div class="kpi-data">
+              <div id="kpi-open-val" class="kpi-num">0</div>
+              <div class="kpi-title" data-i18n="kpiOpenIssues">Требуют реакции</div>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-icon-box kpi-amber"><i class="fa-solid fa-screwdriver-wrench"></i></div>
+            <div class="kpi-data">
+              <div id="kpi-active-val" class="kpi-num">0</div>
+              <div class="kpi-title" data-i18n="kpiInWork">В процессе решения</div>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-icon-box kpi-green"><i class="fa-solid fa-circle-check"></i></div>
+            <div class="kpi-data">
+              <div id="kpi-closed-val" class="kpi-num">0</div>
+              <div class="kpi-title" data-i18n="kpiClosedIssues">Успешно закрыто</div>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-icon-box kpi-purple"><i class="fa-solid fa-award"></i></div>
+            <div class="kpi-data">
+              <div id="kpi-biqs-val" class="kpi-num">96.8%</div>
+              <div class="kpi-title" data-i18n="kpiBiqsIndex">Общий индекс BIQS</div>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-icon-box kpi-cyan"><i class="fa-solid fa-stopwatch"></i></div>
+            <div class="kpi-data">
+              <div id="kpi-sla-val" class="kpi-num">1.4 ч</div>
+              <div class="kpi-title" data-i18n="kpiSlaResponse">Среднее время SLA</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="analytics-charts-grid">
+          <div class="chart-card">
+            <div class="chart-card-title">
+              <i class="fa-solid fa-chart-pie"></i> <span data-i18n="chartIssuesByStatus">Распределение статусов проблем</span>
+            </div>
+            <div class="chart-canvas-box" style="height: 220px;">
+              <canvas id="chartIssuesStatus"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-card-title">
+              <i class="fa-solid fa-chart-simple"></i> <span data-i18n="chartBiqsByDept">Индекс соответствия BIQS по цехам завода (%)</span>
+            </div>
+            <div class="chart-canvas-box" style="height: 220px;">
+              <canvas id="chartBiqsDepts"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Factory Departments Matrix Table -->
+        <div class="card" style="margin-top: 24px;">
+          <div class="card-title">
+            <span><i class="fa-solid fa-table-list"></i> <span data-i18n="tableDeptOverview">Сводная матрица показателей по цехам завода</span></span>
+            <span class="badge-tag badge-blue">5 производственных цехов</span>
+          </div>
+          <div class="table-responsive">
+            <table class="industrial-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thDeptCode">Код</th>
+                  <th data-i18n="thDeptName">Цех / Подразделение</th>
+                  <th data-i18n="thDeptHead">Руководитель цеха</th>
+                  <th data-i18n="thDeptIssues">Всего заявок</th>
+                  <th data-i18n="thDeptOpen">Открытых</th>
+                  <th data-i18n="thDeptClosed">Закрыто</th>
+                  <th data-i18n="thDeptBiqs">Индекс BIQS</th>
+                  <th data-i18n="thDeptStatus">Статус цеха</th>
+                </tr>
+              </thead>
+              <tbody id="executive-dept-rows">
+                <!-- Dynamically populated via app.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== MODULE 4: ADMIN PANEL (INVITES, LINES, USERS, LOGS) ==================== -->
+      <section id="section-mod4" class="module-section hidden">
+        <div class="module-header-row">
+          <div>
+            <h2 class="module-title" data-i18n="mod4Title">Модуль №4: Расширенная панель Администратора</h2>
+            <p class="module-subtitle" data-i18n="mod4Subtitle">Полное управление производственными линиями, пользователями, кодами доступа и аудитом логов</p>
+          </div>
+          <div class="module-header-actions" style="display: flex; gap: 10px;">
+            <button class="btn-action-primary btn-accent-gold" onclick="openCreateKeyModal()">
+              <i class="fa-solid fa-ticket"></i>
+              <span data-i18n="btnCreateKey">+ Сгенерировать инвайт-код</span>
+            </button>
+            <button class="btn-action-primary" onclick="openCreateLineModal()">
+              <i class="fa-solid fa-industry"></i>
+              <span>+ Добавить линию</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Admin Sub-navigation Tabs -->
+        <div style="display: flex; gap: 12px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; flex-wrap: wrap;">
+          <button type="button" id="admin-tab-btn-keys" class="filter-select active" onclick="switchAdminSubTab('keys')" style="font-weight: 700;">
+            <i class="fa-solid fa-ticket"></i> Инвайт-коды
+          </button>
+          <button type="button" id="admin-tab-btn-lines" class="filter-select" onclick="switchAdminSubTab('lines')" style="font-weight: 700;">
+            <i class="fa-solid fa-industry"></i> Линии сборки
+          </button>
+          <button type="button" id="admin-tab-btn-users" class="filter-select" onclick="switchAdminSubTab('users')" style="font-weight: 700;">
+            <i class="fa-solid fa-users-gear"></i> Учетные записи
+          </button>
+          <button type="button" id="admin-tab-btn-logs" class="filter-select" onclick="switchAdminSubTab('logs')" style="font-weight: 700;">
+            <i class="fa-solid fa-shield-cat"></i> Системный журнал логов
+          </button>
+        </div>
+
+        <!-- SUB TAB 1: INVITE KEYS -->
+        <div id="admin-subtab-keys" class="admin-subtab">
+          <div class="card">
+            <div class="card-title">
+              <span><i class="fa-solid fa-ticket"></i> Действующие и закрытые коды приглашений</span>
+            </div>
+            <div class="table-responsive">
+              <table class="industrial-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="thKeyCode">Код приглашения</th>
+                    <th data-i18n="thKeyRole">Назначаемая роль</th>
+                    <th data-i18n="thKeyDept">Привязка к цеху</th>
+                    <th data-i18n="thKeyUses">Использовано / Лимит</th>
+                    <th data-i18n="thKeyStatus">Состояние</th>
+                    <th>Заметка</th>
+                    <th data-i18n="thKeyAction">Действие</th>
+                  </tr>
+                </thead>
+                <tbody id="invite-keys-rows">
+                  <!-- Populated via app.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB TAB 2: ASSEMBLY LINES -->
+        <div id="admin-subtab-lines" class="admin-subtab hidden">
+          <div class="card">
+            <div class="card-title">
+              <span><i class="fa-solid fa-industry"></i> Реестр производственных линий и участков сборки</span>
+              <button class="btn-action-primary" style="font-size: 12px; padding: 4px 10px;" onclick="openCreateLineModal()">+ Создать линию</button>
+            </div>
+            <div class="table-responsive">
+              <table class="industrial-table">
+                <thead>
+                  <tr>
+                    <th>Код цеха</th>
+                    <th>Наименование линии сборки</th>
+                    <th>Описание участка</th>
+                    <th>Состояние</th>
+                    <th>Действие</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-lines-rows">
+                  <!-- Populated via app.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB TAB 3: USERS & CREATION -->
+        <div id="admin-subtab-users" class="admin-subtab hidden">
+          <div class="card" style="background: #f8fafc; border: 1px solid #cbd5e1; margin-bottom: 24px;">
+            <div class="card-title">
+              <span><i class="fa-solid fa-user-plus" style="color: var(--primary-blue);"></i> <span data-i18n="adminCreateUserSection">Создание учетной записи с Логином и Паролем</span></span>
+              <span class="badge-tag badge-blue">Для доверенных сотрудников</span>
+            </div>
+
+            <form id="form-admin-create-user" class="modal-form" style="max-width: 800px;">
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="admin-new-username" data-i18n="lblCreateUserUsername">Логин для нового пользователя</label>
+                  <div class="input-wrapper">
+                    <i class="fa-solid fa-user"></i>
+                    <input type="text" id="admin-new-username" class="form-input" placeholder="логин..." required>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="admin-new-password" data-i18n="lblCreateUserPassword">Пароль</label>
+                  <div class="input-wrapper">
+                    <i class="fa-solid fa-key"></i>
+                    <input type="password" id="admin-new-password" class="form-input" placeholder="пароль..." required>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="admin-new-fullname" data-i18n="lblCreateUserFullName">Ф.И.О. сотрудника</label>
+                  <div class="input-wrapper">
+                    <i class="fa-solid fa-id-card"></i>
+                    <input type="text" id="admin-new-fullname" class="form-input" placeholder="Например: Каримов Анвар" required>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="admin-new-role" data-i18n="lblCreateUserRole">Роль</label>
+                  <select id="admin-new-role" class="form-input" required>
+                    <option value="admin">Главный Администратор</option>
+                    <option value="director">Генеральный директор / Зам</option>
+                    <option value="shop_head">Начальник цеха / Старший мастер</option>
+                    <option value="auditor">Инспектор службы качества BIQS</option>
+                    <option value="operator">Оператор линии</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="admin-new-dept" data-i18n="lblCreateUserDept">Цех / Отдел</label>
+                <select id="admin-new-dept" class="form-input" required>
+                  <option value="all">Все цеха (Сквозной доступ)</option>
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
+
+              <div id="admin-create-user-msg" class="hidden" style="padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;"></div>
+
+              <button type="submit" class="btn-action-primary" style="align-self: flex-start;">
+                <i class="fa-solid fa-user-check"></i>
+                <span data-i18n="btnSubmitCreateUser">Создать пользователя</span>
+              </button>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="card-title">
+              <span><i class="fa-solid fa-users"></i> Все зарегистрированные сотрудники (с логином и паролем)</span>
+            </div>
+            <div class="table-responsive">
+              <table class="industrial-table">
+                <thead>
+                  <tr>
+                    <th>Логин</th>
+                    <th>Ф.И.О. сотрудника</th>
+                    <th>Роль</th>
+                    <th>Цех</th>
+                    <th>Статус</th>
+                    <th>Дата создания</th>
+                    <th>Действие</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-users-rows">
+                  <!-- Populated via app.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB TAB 4: SYSTEM LOGS -->
+        <div id="admin-subtab-logs" class="admin-subtab hidden">
+          <div class="card">
+            <div class="card-title">
+              <span><i class="fa-solid fa-shield-cat"></i> Системный журнал аудита логов безопасности</span>
+              <button class="btn-action-primary" style="font-size: 11px; padding: 4px 8px;" onclick="loadAdminLogs()">Обновить логи</button>
+            </div>
+            <div class="table-responsive">
+              <table class="industrial-table">
+                <thead>
+                  <tr>
+                    <th>Время</th>
+                    <th>Пользователь / Имя</th>
+                    <th>Действие</th>
+                    <th>Подробности</th>
+                    <th>IP адрес</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-logs-rows">
+                  <!-- Populated via app.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+  </div><!-- /dashboard-root -->
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- 1. MODAL: REPORT NEW LINE ISSUE -->
+  <div id="modal-new-issue" class="modal-overlay hidden">
+    <div class="modal-card modal-card-wide">
+      <button class="modal-close" onclick="closeModal('modal-new-issue')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-header-title">
+        <i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-danger);"></i>
+        <span data-i18n="modalNewIssueTitle">Оперативная фиксация проблемы на линии</span>
+      </h3>
+      
+      <form id="form-create-issue" class="modal-form">
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="issue-reporter-name">Ф.И.О. заявителя (Рабочий / Мастер / Бригадир)</label>
+            <div class="input-wrapper">
+              <i class="fa-solid fa-user-pen"></i>
+              <input type="text" id="issue-reporter-name" class="form-input" placeholder="Введите ваше Ф.И.О..." required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="issue-target-dept" data-i18n="lblAuditDept">Цех / Подразделение</label>
+            <select id="issue-target-dept" class="form-input" required onchange="onIssueDeptChange()">
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="issue-line-name" data-i18n="lblSelectLine">Производственная линия / Пост</label>
+            <input type="text" id="issue-line-name" class="form-input" data-i18n-ph="phLineName" placeholder="Например: Линия Cobalt" required>
+          </div>
+
+          <div class="form-group">
+            <label for="issue-defect-type" data-i18n="lblDefectType">Категория / Дефект</label>
+            <input type="text" id="issue-defect-type" class="form-input" data-i18n-ph="phDefectType" placeholder="Например: Момент затяжки, дефект сварки..." required>
+          </div>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="issue-severity" data-i18n="lblSeverity">Уровень критичности</label>
+            <select id="issue-severity" class="form-input" required>
+              <option value="critical_stop">🚨 Критическая (Остановка линии / Line Stop)</option>
+              <option value="major" selected>⚠️ Значительное отклонение (Major)</option>
+              <option value="minor">ℹ️ Незначительное замечание (Minor)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="issue-downtime-minutes">Время простоя линии (минуты)</label>
+            <input type="number" id="issue-downtime-minutes" class="form-input" placeholder="0" min="0" value="0">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="issue-description" data-i18n="lblIssueDesc">Подробное описание несоответствия</label>
+          <textarea id="issue-description" class="form-input" rows="3" data-i18n-ph="phIssueDesc" placeholder="Опишите обнаруженный дефект..." required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label data-i18n="lblPhotoUpload">Фотография дефекта (Камера смартфона / Файл / Ссылка)</label>
+          <div class="photo-upload-container">
+            <input type="file" id="issue-photo-file" accept="image/*" capture="environment" style="display: none;" onchange="handleIssueFileSelect(event)">
+            <button type="button" class="btn-photo-pick" onclick="document.getElementById('issue-photo-file').click()">
+              <i class="fa-solid fa-camera"></i> <span data-i18n="btnSnapCamera">Сделать снимок / Загрузить файл</span>
+            </button>
+            <input type="url" id="issue-photo-url" class="form-input" placeholder="https://... фото дефекта" style="flex: 1;">
+          </div>
+          <div id="issue-photo-preview" class="photo-preview-box hidden">
+            <img id="issue-preview-img" src="" alt="Предпросмотр фото дефекта">
+            <button type="button" class="btn-remove-photo" onclick="removeIssuePhoto()"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </div>
+
+        <div class="modal-actions-row">
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-new-issue')">Отмена</button>
+          <button type="submit" class="btn-action-primary">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span data-i18n="btnSubmitIssue">Зарегистрировать проблему</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 2. MODAL: LIVE BIQS AUDIT WALKTHROUGH -->
+  <div id="modal-biqs-audit" class="modal-overlay hidden">
+    <div class="modal-card modal-card-wide">
+      <button class="modal-close" onclick="closeModal('modal-biqs-audit')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-header-title">
+        <i class="fa-solid fa-clipboard-check" style="color: var(--accent-emerald);"></i>
+        <span data-i18n="modalAuditTitle">Проведение оперативного аудита BIQS на линии</span>
+      </h3>
+
+      <form id="form-create-audit" class="modal-form">
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="audit-dept-select" data-i18n="lblAuditDept">Проверяемый цех</label>
+            <select id="audit-dept-select" class="form-input" required>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="audit-line-input" data-i18n="lblAuditLine">Наименование линии и рабочего поста</label>
+            <input type="text" id="audit-line-input" class="form-input" data-i18n-ph="phAuditLine" placeholder="Например: Линия Cobalt - Пост сборки #2" required>
+          </div>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="audit-auditor-name" data-i18n="lblAuditorName">Ф.И.О. аудитора качества</label>
+            <input type="text" id="audit-auditor-name" class="form-input" required>
+          </div>
+          <div class="form-group">
+            <label for="audit-worker-name" data-i18n="lblWorkerName">Ф.И.О. опрашиваемого рабочего / оператора</label>
+            <input type="text" id="audit-worker-name" class="form-input" data-i18n-ph="phWorkerName" placeholder="Например: Ибрагимов Сардор" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label data-i18n="lblWorkerKnowledge">Результат опроса рабочего по инструкциям (SOS):</label>
+          <select id="audit-worker-knowledge" class="form-input" required>
+            <option value="Знает и соблюдает стандарт" data-i18n="workerKnowsStandard">Рабочий четко знает стандарт и соблюдает карту SOS</option>
+            <option value="Требуется повторное обучение" data-i18n="workerNeedsTraining">Обнаружены пробелы / Требуется повторный инструктаж</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label style="font-weight: 700; margin-bottom: 8px;" data-i18n="lblAuditQuestions">Проверка обязательных пунктов стандартов BIQS:</label>
+          <div id="audit-questions-container" class="audit-questions-list">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label data-i18n="violationPhotosLabel">Фотофиксация выявленных замечаний (URL):</label>
+          <input type="url" id="audit-violation-photo" class="form-input" placeholder="https://... ссылка на фото отклонения">
+        </div>
+
+        <div class="form-group">
+          <label data-i18n="auditCommentsLabel">Заключение инспектора качества:</label>
+          <textarea id="audit-comments" class="form-input" rows="2" placeholder="Итоговые выводы по аудиту..."></textarea>
+        </div>
+
+        <div class="modal-actions-row">
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-biqs-audit')">Отмена</button>
+          <button type="submit" class="btn-action-primary btn-accent-emerald">
+            <i class="fa-solid fa-check"></i>
+            <span data-i18n="btnSubmitAudit">Завершить обход и зафиксировать в системе</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3. MODAL: ASSIGN RESPONSIBLE MASTER -->
+  <div id="modal-assign-issue" class="modal-overlay hidden">
+    <div class="modal-card">
+      <button class="modal-close" onclick="closeModal('modal-assign-issue')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-header-title">
+        <i class="fa-solid fa-user-gear"></i>
+        <span data-i18n="modalAssignTitle">Назначение ответственного мастера</span>
+      </h3>
+      <form id="form-assign-issue" class="modal-form">
+        <input type="hidden" id="assign-issue-id">
+        <div class="form-group">
+          <label for="assign-input-name" data-i18n="lblAssigneeName">Ф.И.О. или должность ответственного</label>
+          <input type="text" id="assign-input-name" class="form-input" data-i18n-ph="phAssigneeName" placeholder="Например: Карим Азизов" required>
+        </div>
+        <div class="modal-actions-row">
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-assign-issue')">Отмена</button>
+          <button type="submit" class="btn-action-primary">
+            <span data-i18n="btnConfirmAssign">Назначить ответственного</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 4. MODAL: VERIFICATION & AFTER-FIX PHOTO -->
+  <div id="modal-verify-issue" class="modal-overlay hidden">
+    <div class="modal-card modal-card-wide">
+      <button class="modal-close" onclick="closeModal('modal-verify-issue')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-header-title">
+        <i class="fa-solid fa-camera-rotate"></i>
+        <span data-i18n="modalVerifyTitle">Фото-подтверждение устранения дефекта</span>
+      </h3>
+      <form id="form-verify-issue" class="modal-form">
+        <input type="hidden" id="verify-issue-id">
+        <div class="form-group">
+          <label for="verify-action-taken" data-i18n="lblActionTaken">Описание выполненных корректирующих действий</label>
+          <textarea id="verify-action-taken" class="form-input" rows="3" data-i18n-ph="phActionTaken" placeholder="Какие работы выполнены..." required></textarea>
+        </div>
+        <div class="form-group">
+          <label data-i18n="lblVerifyPhoto">Фотография исправленного узла / детали (После устранения)</label>
+          <div class="photo-upload-container">
+            <input type="file" id="verify-photo-file" accept="image/*" capture="environment" style="display: none;" onchange="handleVerifyFileSelect(event)">
+            <button type="button" class="btn-photo-pick" onclick="document.getElementById('verify-photo-file').click()">
+              <i class="fa-solid fa-camera"></i> <span data-i18n="btnSnapCamera">Сделать снимок / Загрузить файл</span>
+            </button>
+            <input type="url" id="verify-photo-url" class="form-input" placeholder="https://... ссылка на фото подтверждения" style="flex: 1;">
+          </div>
+          <div id="verify-photo-preview" class="photo-preview-box hidden">
+            <img id="verify-preview-img" src="" alt="Фото исправленного узла">
+          </div>
+        </div>
+        <div class="modal-actions-row">
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-verify-issue')">Отмена</button>
+          <button type="submit" class="btn-action-primary btn-accent-emerald">
+            <span data-i18n="btnConfirmVerify">Отправить на проверку и закрытие</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 5. MODAL: CREATE INVITE KEY (ADMIN) -->
+  <div id="modal-create-key" class="modal-overlay hidden">
+    <div class="modal-card">
+      <button class="modal-close" onclick="closeModal('modal-create-key')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-header-title">
+        <i class="fa-solid fa-ticket" style="color: var(--accent-gold);"></i>
+        <span data-i18n="modalCreateKeyTitle">Создание инвайт-ключа для сотрудника</span>
+      </h3>
+      <form id="form-create-key" class="modal-form">
+        <div class="form-group">
+          <label for="key-role-select" data-i18n="lblKeyRole">Роль в системе</label>
+          <select id="key-role-select" class="form-input" required>
+            <option value="user">Пользователь (Аудитор BIQS)</option>
+            <option value="operator">Оператор линии</option>
+            <option value="shop_head">Начальник цеха</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="key-dept-select" data-i18n="lblKeyDept">Цех / Подразделение сотрудника</label>
+          <select id="key-dept-select" class="form-input" required>
+            <option value="all">Все цеха</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="key-max-uses" data-i18n="lblKeyMaxUses">Максимальное число активаций</label>
+          <input type="number" id="key-max-uses" class="form-input" value="10" min="1" max="1000" required>
+        </div>
+
+        <div class="form-group">
+          <label for="key-note" data-i18n="lblKeyNote">Служебная заметка / Назначение</label>
+          <input type="text" id="key-note" class="form-input" data-i18n-ph="phKeyNote" placeholder="Например: Для инспекторов сборки">
+        </div>
+
+        <div class="modal-actions-row">
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-create-key')">Отмена</button>
+          <button type="submit" class="btn-action-primary btn-accent-gold">
+            <span data-i18n="btnSaveKey">Сгенерировать и скопировать ключ</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 6. MODAL: CREATE ASSEMBLY LINE (ADMIN) -->
+  <div id="modal-create-line" class="modal-overlay hidden">
+    <div class="modal-card">
+      <button class="modal-close" onclick="closeModal('modal-create-line')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-header-title">
+        <i class="fa-solid fa-industry" style="color: var(--primary-blue);"></i>
+        <span>Добавление новой линии сборки</span>
+      </h3>
+      <form id="form-create-line" class="modal-form">
+        <div class="form-group">
+          <label for="line-dept-select">Производственный цех</label>
+          <select id="line-dept-select" class="form-input" required>
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="line-name-input">Наименование линии / Поста сборки</label>
+          <input type="text" id="line-name-input" class="form-input" placeholder="Например: Линия Cobalt #2" required>
+        </div>
+
+        <div class="form-group">
+          <label for="line-desc-input">Описание оборудования / Участка</label>
+          <input type="text" id="line-desc-input" class="form-input" placeholder="Краткое описание технологической линии...">
+        </div>
+
+        <div class="modal-actions-row">
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-create-line')">Отмена</button>
+          <button type="submit" class="btn-action-primary">
+            <span>Создать линию сборки</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 6. MODAL: LIGHTBOX PHOTO VIEWER -->
+  <div id="modal-photo-viewer" class="modal-overlay hidden">
+    <div class="modal-card modal-card-photo">
+      <button class="modal-close" onclick="closeModal('modal-photo-viewer')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 id="photo-viewer-title" style="font-size: 15px; font-weight: 700; margin-bottom: 10px;">Фотоматериал дефекта</h3>
+      <div style="text-align: center; background: #0b1329; border-radius: 8px; padding: 10px;">
+        <img id="photo-viewer-img" src="" style="max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 6px;" alt="Фото">
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/static/i18n.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
