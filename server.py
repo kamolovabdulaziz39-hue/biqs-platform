@@ -266,7 +266,7 @@ def _start_keep_alive_worker():
         time.sleep(20)
         while True:
             try:
-                render_url = os.environ.get('RENDER_EXTERNAL_URL') or os.environ.get('APP_URL')
+                render_url = os.environ.get('RENDER_EXTERNAL_URL') or os.environ.get('APP_URL') or 'https://biqs-platform.onrender.com'
                 if render_url:
                     target_url = f"{render_url.rstrip('/')}/api/ping"
                     req = urllib.request.Request(
