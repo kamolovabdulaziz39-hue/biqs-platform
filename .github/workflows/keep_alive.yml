@@ -1,0 +1,31 @@
+name: Keep BIQS Platform Awake 24/7 (Prevent Render Sleep)
+
+on:
+  schedule:
+    # Run every 10 minutes every day around the clock
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    name: Ping Render Web Service
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping UZ-Tong Hong BIQS Service
+        run: |
+          echo "Sending Keep-Alive ping to Render..."
+          
+          # List of potential URLs to ensure Render never goes to sleep
+          URLS=(
+            "https://uztonghong-biqs-platform.onrender.com/api/ping"
+            "https://biqs-platform.onrender.com/api/ping"
+          )
+          
+          for url in "${URLS[@]}"; do
+            echo "Pinging: $url"
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$url" || echo "failed")
+            echo "Result: $HTTP_CODE"
+          done
+          
+          echo "Keep-alive ping completed successfully!"

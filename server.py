@@ -7,11 +7,14 @@ import base64
 import secrets
 import hashlib
 import sqlite3
+import threading
+import urllib.request
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from fastapi import FastAPI, Request, HTTPException, Depends, Header, Response, Cookie, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 import uvicorn
 
@@ -254,10 +257,41 @@ def init_db():
     conn.commit()
     conn.close()
 
-init_db()
-
 app = FastAPI(title='СП «Uz-Tong Hong Co.» BIQS Platform')
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount('/static', StaticFiles(directory='static'), name='static')
+
+def _start_keep_alive_worker():
+    def _worker():
+        time.sleep(20)
+        while True:
+            try:
+                render_url = os.environ.get('RENDER_EXTERNAL_URL') or os.environ.get('APP_URL')
+                if render_url:
+                    target_url = f"{render_url.rstrip('/')}/api/ping"
+                    req = urllib.request.Request(
+                        target_url,
+                        headers={'User-Agent': 'Mozilla/5.0 (BIQS-Platform-KeepAlive/2.0)'}
+                    )
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        pass
+            except Exception:
+                pass
+            time.sleep(480)  # Ping every 8 minutes (Render sleeps after 15 min)
+
+    t = threading.Thread(target=_worker, daemon=True, name="RenderKeepAliveWorker")
+    t.start()
+
+_start_keep_alive_worker()
+
+@app.get('/api/ping')
+@app.get('/health')
+def ping_health():
+    return {
+        'status': 'ok',
+        'app': 'Uz-Tong Hong Co. BIQS Platform',
+        'timestamp': datetime.now().isoformat()
+    }
 
 SESSIONS: Dict[str, Dict[str, Any]] = {}
 

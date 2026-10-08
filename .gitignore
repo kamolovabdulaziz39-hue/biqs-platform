@@ -10,3 +10,4 @@ ENV/
 .idea/
 .vscode/
 *.log
+push_to_github.bat
