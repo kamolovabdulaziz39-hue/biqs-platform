@@ -40,8 +40,28 @@ const I18N = {
     navModule2: "BIQS Sifat auditlari",
     navModule3: "Direktor tahliliy paneli",
     navModule4: "Admin: Takliflar va Ruxsatlar",
+    navModule5: "Sifat xizmati kunlik rejalari (OTK)",
     btnExportPdf: "Hisobotni yuklash (PDF)",
     btnLogout: "Chiqish",
+
+    // Module 5: Daily Quality Plans (Engineers & Controllers)
+    mod5Title: "5-Modul: Sifat xizmatining kunlik rejalari va vazifalari (OTK)",
+    mod5Subtitle: "Elektron vazifalar taqsimoti, muhandislar va nazoratchilar alohida nazorati, kechki hisobotlar",
+    tabEngineers: "👷 Sifat muhandislari vazifalari (Muhandislik darajasi)",
+    tabControllers: "🔍 OTK nazoratchilari vazifalari (Liniyadagi post nazorati)",
+    tabDailyReport: "📑 Kunlik yakuniy kechki hisobot (Boshliq va Rahbariyat)",
+    btnCreateQualityTask: "+ Kunlik yangi vazifa berish",
+    btnPrintQualityPlan: "Kunlik reja hisobotini chop etish (PDF)",
+    kpiEngineers: "Sifat muhandislari",
+    kpiControllers: "OTK nazoratchilari",
+    kpiDefectsPrevented: "Oldi olingan nuqsonlar",
+    kpiUnitsChecked: "Tekshirilgan qismlar",
+    kpiReportStatus: "Kechki hisobot holati",
+    roleQualityHead: "Sifat boʻlimi boshligʻi / OTK boshligʻi",
+    roleEngineer: "Sifat boʻyicha muhandis (Yuqori muhandislik maqomi)",
+    roleController: "OTK sifat nazoratchisi (Liniyadagi nazorat)",
+    engineerStatusBadge: "Muhandislik maqomi: Jarayon tahlili, Poka-Yoke, SOS/JES va kalibrlash",
+    controllerStatusBadge: "Nazoratchi maqomi: Konveyerda 100% post nazorati, Red Box va nuqsonlar izolyatsiyasi",
     
     // Module 1: Line Issues
     mod1Title: "1-Modul: Liniyadagi muammolarni tezkor qayd etish va hayotiy sikli",
@@ -266,8 +286,28 @@ const I18N = {
     navModule2: "BIQS Аудиты качества",
     navModule3: "Дашборд Директора",
     navModule4: "Админ: Инвайты и Доступ",
+    navModule5: "Ежедневный план качества (ОТК)",
     btnExportPdf: "Выгрузить отчёт (PDF)",
     btnLogout: "Выход",
+
+    // Module 5: Daily Quality Plans (Engineers & Controllers)
+    mod5Title: "Модуль №5: Ежедневные планы и задачи службы качества (ОТК)",
+    mod5Subtitle: "Электронная выдача заданий, раздельный контроль инженеров и контролёров, вечерние отчёты",
+    tabEngineers: "👷 Задания Инженеров по качеству (Инженерный статус)",
+    tabControllers: "🔍 Задания Контролёров ОТК (Линейный постовой контроль)",
+    tabDailyReport: "📑 Итоговый вечерний рапорт дня (Начальник и Директорат)",
+    btnCreateQualityTask: "+ Выдать задание на день",
+    btnPrintQualityPlan: "Печать сменного отчета (PDF)",
+    kpiEngineers: "Инженеры качества",
+    kpiControllers: "Контролёры ОТК",
+    kpiDefectsPrevented: "Предотвращено брака",
+    kpiUnitsChecked: "Проверено деталей",
+    kpiReportStatus: "Статус вечернего рапорта",
+    roleQualityHead: "Руководитель отдела качества / Начальник ОТК",
+    roleEngineer: "Инженер по качеству (Высший технический статус)",
+    roleController: "Контролёр качества ОТК (Линейный надзор на постах)",
+    engineerStatusBadge: "Инженерный статус: Анализ процессов, Poka-Yoke, карты SOS/JES, калибровка инструмента",
+    controllerStatusBadge: "Контрольный статус: 100% постовой надзор конвейера, Red Box, недопущение дефектов",
     
     mod1Title: "Модуль №1: Оперативная фиксация и жизненный цикл дефектов",
     mod1Subtitle: "Устранение несоответствий на линиях сборки и цехах завода в реальном времени",
@@ -504,5 +544,6 @@ function applyTranslations() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  setLanguage("uz");
+  const savedLang = localStorage.getItem("uth_language") || "ru";
+  setLanguage(savedLang);
 });

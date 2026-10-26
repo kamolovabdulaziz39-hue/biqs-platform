@@ -1,14 +1,14 @@
-// ===== INDUSTRIAL WEB PLATFORM JAVASCRIPT FOR JV UZ-TONG HONG CO. =====
+// ===== INDUSTRIAL DIGITAL MANUFACTURING PLATFORM JS (JV UZ-TONG HONG CO.) =====
 
 let currentUser = null;
+let currentSimulatedRole = null;
 let allDepartments = [];
 let allAssemblyLines = [];
-let allIssues = [];
-let chartStatusInstance = null;
-let chartBiqsInstance = null;
+let allAndonEvents = [];
+let allShiftReports = [];
 
-let currentIssuePhotoUrl = "";
-let currentVerifyPhotoUrl = "";
+let chartDefectsInstance = null;
+let chartScrapDeptInstance = null;
 
 const BIQS_STANDARD_QUESTIONS = [
   { section: "Standardized Work", question_ru: "Рабочий точно соблюдает SOS (Standard Operation Sheet) и карту действий?", question_uz: "Ishchi SOS yoʻriqnomasiga va harakatlar ketma-ketligiga qatʼiy amal qilmoqdami?" },
@@ -21,17 +21,25 @@ const BIQS_STANDARD_QUESTIONS = [
 document.addEventListener("DOMContentLoaded", () => {
   checkAuth();
   setupAuthEventListeners();
-  setupIssueUploadHandlers();
-  setupAdminCreateUserHandler();
-  setupLineCreateHandler();
+  setupWorkerShiftInputHandler();
+  setupAndonTriggerHandler();
+  setupMechanicResolveHandler();
+  setupControllerUnlockHandler();
+  setupShiftReportHandler();
+  setupIncomingInspectionHandler();
+  setupReclamationHandler();
+  setupEnergyHandlers();
+  setupFacilityHandler();
+  setupQualityDailyTaskHandlers();
+  setupBiqsAuditHandler();
+  setupAdminHandlers();
 });
 
-// ==================== AUTHENTICATION LOGIC ====================
+// ==================== AUTHENTICATION & SESSION ====================
 
 function toggleAdminAuth(showAdmin) {
   const boxInvite = document.getElementById("auth-box-invite");
   const boxAdmin = document.getElementById("auth-box-admin");
-
   if (showAdmin) {
     boxInvite.classList.add("hidden");
     boxAdmin.classList.remove("hidden");
@@ -43,17 +51,12 @@ function toggleAdminAuth(showAdmin) {
   }
 }
 
-async function enterGuestMode() {
-  try {
-    const res = await fetch("/api/auth/guest-login", { method: "POST" });
-    const data = await res.json();
-    if (res.ok && data.status === "success") {
-      currentUser = data.user;
-      showDashboard();
-    }
-  } catch (err) {
-    alert("Ошибка подключения к серверу");
-  }
+function fillUserCreds(username, password) {
+  toggleAdminAuth(true);
+  const userInp = document.getElementById("input-admin-user");
+  const passInp = document.getElementById("input-admin-pass");
+  if (userInp) userInp.value = username;
+  if (passInp) passInp.value = password;
 }
 
 function fillInviteCode(code) {
@@ -63,11 +66,24 @@ function fillInviteCode(code) {
   input.focus();
 }
 
+async function enterGuestMode() {
+  try {
+    const res = await fetch("/api/auth/guest-login", { method: "POST" });
+    const data = await res.json();
+    if (res.ok && data.status === "success") {
+      currentUser = data.user;
+      currentSimulatedRole = "director";
+      showDashboard();
+    }
+  } catch (err) {
+    alert("Ошибка подключения к серверу");
+  }
+}
+
 function setupAuthEventListeners() {
-  // 1. Login via Invite Code
-  const formInviteLogin = document.getElementById("form-invite-login");
-  if (formInviteLogin) {
-    formInviteLogin.addEventListener("submit", async (e) => {
+  const formInvite = document.getElementById("form-invite-login");
+  if (formInvite) {
+    formInvite.addEventListener("submit", async (e) => {
       e.preventDefault();
       const invite_code = document.getElementById("input-invite-only-code").value.trim();
       const full_name = document.getElementById("input-inspector-name").value.trim();
@@ -84,22 +100,22 @@ function setupAuthEventListeners() {
         const data = await res.json();
         if (res.ok && data.status === "success") {
           currentUser = data.user;
+          currentSimulatedRole = currentUser.role;
           showDashboard();
         } else {
           errTxt.textContent = data.detail || "Неверный код приглашения";
           errBox.classList.remove("hidden");
         }
       } catch (err) {
-        errTxt.textContent = t("errConnection");
+        errTxt.textContent = "Ошибка соединения с сервером";
         errBox.classList.remove("hidden");
       }
     });
   }
 
-  // 2. Admin Login
-  const formAdminLogin = document.getElementById("form-admin-login");
-  if (formAdminLogin) {
-    formAdminLogin.addEventListener("submit", async (e) => {
+  const formAdmin = document.getElementById("form-admin-login");
+  if (formAdmin) {
+    formAdmin.addEventListener("submit", async (e) => {
       e.preventDefault();
       const username = document.getElementById("input-admin-user").value.trim();
       const password = document.getElementById("input-admin-pass").value.trim();
@@ -116,19 +132,19 @@ function setupAuthEventListeners() {
         const data = await res.json();
         if (res.ok && data.status === "success") {
           currentUser = data.user;
+          currentSimulatedRole = currentUser.role;
           showDashboard();
         } else {
           errTxt.textContent = data.detail || "Неверный логин или пароль";
           errBox.classList.remove("hidden");
         }
       } catch (err) {
-        errTxt.textContent = t("errConnection");
+        errTxt.textContent = "Ошибка соединения с сервером";
         errBox.classList.remove("hidden");
       }
     });
   }
 
-  // Logout
   const btnLogout = document.getElementById("btn-logout");
   if (btnLogout) {
     btnLogout.addEventListener("click", async () => {
@@ -137,12 +153,9 @@ function setupAuthEventListeners() {
     });
   }
 
-  // Export PDF
   const btnExport = document.getElementById("btn-export-pdf");
   if (btnExport) {
-    btnExport.addEventListener("click", () => {
-      window.print();
-    });
+    btnExport.addEventListener("click", () => window.print());
   }
 }
 
@@ -152,6 +165,7 @@ async function checkAuth() {
     const data = await res.json();
     if (data.authenticated && data.user) {
       currentUser = data.user;
+      currentSimulatedRole = currentUser.role;
       showDashboard();
     } else {
       document.getElementById("auth-screen").classList.remove("hidden");
@@ -166,118 +180,192 @@ async function showDashboard() {
   document.getElementById("auth-screen").classList.add("hidden");
   document.getElementById("dashboard-screen").classList.remove("hidden");
 
-  // Populate User Profile Header
+  // Profile display
   document.getElementById("user-display-name").textContent = currentUser.full_name || currentUser.username;
-  
-  const roleDisplayNames = {
-    admin: "Главный Администратор",
-    director: t("roleDirector"),
-    shop_head: t("roleShopHead"),
-    operator: t("roleOperator"),
-    auditor: t("roleAuditor"),
-    user: t("roleUser"),
-    guest: t("roleGuest")
-  };
-  document.getElementById("user-display-role").textContent = roleDisplayNames[currentUser.role] || currentUser.role;
+  document.getElementById("user-display-role").textContent = getRoleDisplayName(currentUser.role);
 
   await loadDepartments();
   await loadAssemblyLines();
-  setupDepartmentIsolation();
 
-  // Navigation Access Control
-  const navMod1 = document.getElementById("nav-btn-mod1");
-  const navMod2 = document.getElementById("nav-btn-mod2");
-  const navMod3 = document.getElementById("nav-btn-mod3");
-  const navMod4 = document.getElementById("nav-btn-mod4");
+  // Populate Select Boxes
+  populateDepartmentSelects();
 
-  if (currentUser.role === "admin") {
-    navMod1.classList.remove("hidden");
-    navMod2.classList.remove("hidden");
-    navMod3.classList.remove("hidden");
-    navMod4.classList.remove("hidden");
-    switchModule("mod1");
-  } else if (currentUser.role === "director") {
-    navMod1.classList.remove("hidden");
-    navMod2.classList.remove("hidden");
-    navMod3.classList.remove("hidden");
-    navMod4.classList.add("hidden");
-    switchModule("mod3");
-  } else if (currentUser.role === "guest") {
-    navMod1.classList.add("hidden");
-    navMod2.classList.remove("hidden");
-    navMod3.classList.add("hidden");
-    navMod4.classList.add("hidden");
-    const banner = document.getElementById("guest-mode-banner");
-    if (banner) banner.classList.remove("hidden");
-    switchModule("mod2");
-  } else {
-    // Workers with Invite Code
-    navMod1.classList.remove("hidden");
-    navMod2.classList.remove("hidden");
-    navMod3.classList.add("hidden");
-    navMod4.classList.add("hidden");
-    switchModule("mod1");
+  // Setup Role Navigation Access
+  setupNavigationPermissions();
+
+  // Load Corridors according to role
+  await applyRoleCorridor(currentSimulatedRole || currentUser.role);
+
+  // Background data pre-fetches
+  loadAndonFeed();
+  loadShiftReports();
+  loadExecutiveBI();
+  loadWorkerInputs();
+}
+
+function getRoleDisplayName(role) {
+  const names = {
+    director: "Генеральный директор завода",
+    shop_head: "Мастер / Начальник цеха",
+    operator: "Рабочий линии / Оператор",
+    controller: "Контролёр качества ОТК",
+    engineer: "Инженер по качеству (Инженерный статус)",
+    mechanic: "Наладчик-механик ОГМ",
+    mechanic_head: "Главный механик завода (ОГМ)",
+    energy_head: "Главный энергетик завода (ОГЭ)",
+    facility_head: "Начальник АХО",
+    quality_head: "Начальник отдела качества (ОТК)",
+    admin: "Главный Администратор",
+    guest: "Демо-просмотр"
+  };
+  return names[role] || role;
+}
+
+// ==================== ROLE CORRIDOR SIMULATOR ====================
+
+function simulateRoleSwitch(role) {
+  currentSimulatedRole = role;
+  applyRoleCorridor(role);
+}
+
+async function applyRoleCorridor(role) {
+  // Highlight active chip in bar
+  document.querySelectorAll(".corridor-chip-btn").forEach(btn => btn.classList.remove("active", "chip-active-director", "chip-active-quality", "chip-active-master", "chip-active-energy"));
+  const activeBtn = document.getElementById(`chip-role-${role}`);
+  if (activeBtn) {
+    activeBtn.classList.add("active");
+    if (role === "director") activeBtn.classList.add("chip-active-director");
+    if (["engineer", "controller", "quality_head"].includes(role)) activeBtn.classList.add("chip-active-quality");
+    if (role === "shop_head") activeBtn.classList.add("chip-active-master");
+    if (role === "energy_head") activeBtn.classList.add("chip-active-energy");
   }
 
-  await loadIssues();
-  await loadAudits();
+  // Update Corridor Banner
+  const titleElem = document.getElementById("corridor-role-title");
+  const descElem = document.getElementById("corridor-role-desc");
+  const pillElem = document.getElementById("corridor-level-pill");
+  const iconElem = document.getElementById("corridor-role-icon");
 
-  if (currentUser.role === "admin" || currentUser.role === "director") {
-    await loadExecutiveSummary();
-  }
+  // Hide all subviews
+  document.querySelectorAll(".corridor-subview").forEach(v => v.classList.add("hidden"));
 
-  if (currentUser.role === "admin") {
-    await loadAdminKeys();
-    await loadAdminLines();
-    await loadAdminUsers();
-    await loadAdminLogs();
+  if (role === "operator") {
+    titleElem.textContent = "Рабочее место: Рабочий линии (Сборщик / Сварщик / Штамповщик)";
+    descElem.textContent = "Ваша зона ответственности: соблюдение сменного темпа, чек-лист 5S, фиксация выработки (сколько сделал), количества брака и мгновенный вызов Andon при поломке.";
+    pillElem.textContent = "Операционный уровень";
+    pillElem.className = "status-pill pill-engineer";
+    iconElem.innerHTML = '<i class="fa-solid fa-user"></i>';
+    document.getElementById("corridor-view-worker").classList.remove("hidden");
+    loadWorkerInputs();
+    switchModule("corridor");
+
+  } else if (role === "controller") {
+    titleElem.textContent = "Рабочее место: Контролёр качества ОТК (Линейный надзор)";
+    descElem.textContent = "Ваша зона ответственности: входной контроль сырья/металла на склад, пооперационный контроль на линиях (моменты затяжки SOS, швы), изоляция брака в Red Box и разблокировка линий.";
+    pillElem.textContent = "Линейный надзор ОТК";
+    pillElem.className = "status-pill pill-controller";
+    iconElem.innerHTML = '<i class="fa-solid fa-clipboard-check"></i>';
+    document.getElementById("corridor-view-controller").classList.remove("hidden");
+    switchOtkSubTab("incoming");
+    loadIncomingInspections();
+    switchModule("corridor");
+
+  } else if (role === "engineer") {
+    titleElem.textContent = "Рабочее место: Инженер по качеству (Высший технический статус)";
+    descElem.textContent = "Ваша зона ответственности: анализ статистики брака от контролёров, рекламации автозавода (8D / 5-Why), аудиты ISO/IATF 16949 и формирование суточного рапорта качества.";
+    pillElem.textContent = "Инженерный статус";
+    pillElem.className = "status-pill pill-engineer";
+    iconElem.innerHTML = '<i class="fa-solid fa-microchip"></i>';
+    document.getElementById("corridor-view-engineer").classList.remove("hidden");
+    switchEngSubTab("stats");
+    renderQualityCharts();
+    loadReclamations();
+    switchModule("corridor");
+
+  } else if (["mechanic", "mechanic_head"].includes(role)) {
+    titleElem.textContent = "Рабочее место: Ремонтно-механическая служба (ОГМ / Ремонтники)";
+    descElem.textContent = "Ваша зона ответственности: оперативный выезд по сигналам Andon, устранение кодов ошибок оборудования (KUKA, FANUC), отписка о причине поломки и передача ОТК.";
+    pillElem.textContent = "Служба ТОиР и механики";
+    pillElem.className = "status-pill pill-engineer";
+    iconElem.innerHTML = '<i class="fa-solid fa-screwdriver-wrench"></i>';
+    document.getElementById("corridor-view-mechanic").classList.remove("hidden");
+    loadMechanicRepairs();
+    switchModule("corridor");
+
+  } else if (role === "energy_head") {
+    titleElem.textContent = "Рабочее место: Служба главного энергетика (ОГЭ)";
+    descElem.textContent = "Ваша зона ответственности: бесперебойная подача электричества, газа, воды и сжатого воздуха (6.5-7.5 бар), учет расхода ресурсов и экстренный аварийный сигнал при сбоях.";
+    pillElem.textContent = "Энергослужба завода";
+    pillElem.className = "status-pill pill-engineer";
+    iconElem.innerHTML = '<i class="fa-solid fa-bolt"></i>';
+    document.getElementById("corridor-view-energy").classList.remove("hidden");
+    loadEnergyStatus();
+    switchModule("corridor");
+
+  } else if (role === "facility_head") {
+    titleElem.textContent = "Рабочее место: Административно-хозяйственный отдел (АХО)";
+    descElem.textContent = "Ваша зона ответственности: контроль чистоты цехов и территории, работа заводской столовой (саннормы), охрана периметра, вывоз отходов и решение хоззаявок мастеров.";
+    pillElem.textContent = "Хозяйственная служба";
+    pillElem.className = "status-pill pill-controller";
+    iconElem.innerHTML = '<i class="fa-solid fa-broom"></i>';
+    document.getElementById("corridor-view-facility").classList.remove("hidden");
+    loadFacilityChecklists();
+    switchModule("corridor");
+
+  } else if (role === "shop_head") {
+    switchModule("master");
+    loadMasterDashboard();
+
+  } else if (role === "director") {
+    switchModule("executive");
+    loadExecutiveBI();
   }
 }
 
-// ==================== DEPARTMENTS & ASSEMBLY LINES ====================
+// ==================== MODULE SWITCHER ====================
+
+function switchModule(moduleKey) {
+  // Highlight nav button
+  document.querySelectorAll(".module-nav-btn").forEach(btn => btn.classList.remove("active"));
+  const navBtn = document.getElementById(`nav-btn-${moduleKey}`);
+  if (navBtn) navBtn.classList.add("active");
+
+  // Hide all sections
+  document.querySelectorAll(".module-section").forEach(sec => sec.classList.add("hidden"));
+
+  const targetSection = document.getElementById(`section-${moduleKey}`);
+  if (targetSection) targetSection.classList.remove("hidden");
+
+  // Trigger data reload depending on module
+  if (moduleKey === "master") loadMasterDashboard();
+  if (moduleKey === "andon") loadAndonFeed();
+  if (moduleKey === "shift_reports") loadShiftReports();
+  if (moduleKey === "executive") loadExecutiveBI();
+  if (moduleKey === "mod5") loadDailyQualityTasks();
+  if (moduleKey === "mod2") loadAudits();
+  if (moduleKey === "mod4") loadAdminKeys();
+}
+
+function setupNavigationPermissions() {
+  const navAdmin = document.getElementById("nav-btn-mod4");
+  if (navAdmin) {
+    if (currentUser.role === "admin") {
+      navAdmin.classList.remove("hidden");
+    } else {
+      navAdmin.classList.add("hidden");
+    }
+  }
+}
+
+// ==================== DEPARTMENTS & SELECTS ====================
 
 async function loadDepartments() {
   try {
     const res = await fetch("/api/departments");
     const data = await res.json();
     allDepartments = data.departments || [];
-    const isUz = getLanguage() === "uz";
-
-    const deptSelect = document.getElementById("filter-dept-select");
-    if (deptSelect) {
-      deptSelect.innerHTML = `<option value="all">${t("filterAllDepts")}</option>` + 
-        allDepartments.map(d => `<option value="${d.id}">${d.code}: ${isUz ? d.name_uz : d.name_ru}</option>`).join("");
-    }
-
-    const issueDeptSelect = document.getElementById("issue-target-dept");
-    if (issueDeptSelect) {
-      issueDeptSelect.innerHTML = allDepartments.map(d => `<option value="${d.id}">${d.code}: ${isUz ? d.name_uz : d.name_ru}</option>`).join("");
-    }
-
-    const auditDeptSelect = document.getElementById("audit-dept-select");
-    if (auditDeptSelect) {
-      auditDeptSelect.innerHTML = allDepartments.map(d => `<option value="${d.id}">${d.code}: ${isUz ? d.name_uz : d.name_ru}</option>`).join("");
-    }
-
-    const keyDeptSelect = document.getElementById("key-dept-select");
-    if (keyDeptSelect) {
-      keyDeptSelect.innerHTML = `<option value="all">${t("deptAll")}</option>` + 
-        allDepartments.map(d => `<option value="${d.id}">${d.code}: ${isUz ? d.name_uz : d.name_ru}</option>`).join("");
-    }
-
-    const adminNewDept = document.getElementById("admin-new-dept");
-    if (adminNewDept) {
-      adminNewDept.innerHTML = `<option value="all">${t("deptAll")}</option>` + 
-        allDepartments.map(d => `<option value="${d.id}">${d.code}: ${isUz ? d.name_uz : d.name_ru}</option>`).join("");
-    }
-
-    const lineDeptSelect = document.getElementById("line-dept-select");
-    if (lineDeptSelect) {
-      lineDeptSelect.innerHTML = allDepartments.map(d => `<option value="${d.id}">${d.code}: ${isUz ? d.name_uz : d.name_ru}</option>`).join("");
-    }
-
   } catch (err) {
-    console.error("Error loading departments:", err);
+    console.error("Error loading departments", err);
   }
 }
 
@@ -287,932 +375,87 @@ async function loadAssemblyLines() {
     const data = await res.json();
     allAssemblyLines = data.lines || [];
   } catch (err) {
-    console.error("Error loading lines:", err);
+    console.error("Error loading assembly lines", err);
   }
 }
 
-function onIssueDeptChange() {
-  const deptId = document.getElementById("issue-target-dept").value;
-  const lineInput = document.getElementById("issue-line-name");
+function populateDepartmentSelects() {
+  const optionsHtml = allDepartments.map(d => `<option value="${d.id}">${d.code}: ${d.name_ru}</option>`).join("");
+
+  const wsiDept = document.getElementById("wsi-dept");
+  if (wsiDept) { wsiDept.innerHTML = optionsHtml; onWorkerDeptChange(); }
+
+  const andonDept = document.getElementById("andon-target-dept");
+  if (andonDept) { andonDept.innerHTML = optionsHtml; onAndonDeptChange(); }
+
+  const filterAndonDept = document.getElementById("filter-andon-dept");
+  if (filterAndonDept) { filterAndonDept.innerHTML = '<option value="all">Все цеха (Сводный вид)</option>' + optionsHtml; }
+
+  const srDept = document.getElementById("sr-dept");
+  if (srDept) { srDept.innerHTML = optionsHtml; }
+
+  const newQDept = document.getElementById("new-quality-dept");
+  if (newQDept) { newQDept.innerHTML = optionsHtml; onQualityTaskDeptChange(); }
+
+  const auditDept = document.getElementById("audit-dept-select");
+  if (auditDept) { auditDept.innerHTML = optionsHtml; }
+
+  const keyDept = document.getElementById("key-dept-select");
+  if (keyDept) { keyDept.innerHTML = '<option value="all">Все цеха</option>' + optionsHtml; }
+}
+
+function onWorkerDeptChange() {
+  const deptId = document.getElementById("wsi-dept").value;
+  const lineSelect = document.getElementById("wsi-line");
   const filtered = allAssemblyLines.filter(l => l.department_id === deptId);
-  if (filtered.length > 0) {
-    lineInput.value = filtered[0].name;
-  }
+  lineSelect.innerHTML = filtered.length ? filtered.map(l => `<option value="${l.name}">${l.name}</option>`).join("") : '<option value="Общий пост цеха">Общий пост цеха</option>';
 }
 
-function setupDepartmentIsolation() {
-  const badge = document.getElementById("user-dept-badge");
-  const isUz = getLanguage() === "uz";
-
-  if (currentUser.department_id && currentUser.department_id !== "all") {
-    const dept = allDepartments.find(d => d.id === currentUser.department_id);
-    const deptName = dept ? (isUz ? dept.name_uz : dept.name_ru) : currentUser.department_id;
-    badge.textContent = `${dept ? dept.code : ""}: ${deptName}`;
-  } else {
-    badge.textContent = t("deptAll");
-  }
+function onAndonDeptChange() {
+  const deptId = document.getElementById("andon-target-dept").value;
+  const lineSelect = document.getElementById("andon-line-name");
+  const filtered = allAssemblyLines.filter(l => l.department_id === deptId);
+  lineSelect.innerHTML = filtered.length ? filtered.map(l => `<option value="${l.name}">${l.name}</option>`).join("") : '<option value="Главная линия">Главная линия</option>';
 }
 
-function switchModule(modId) {
-  document.querySelectorAll(".module-nav-btn").forEach(b => b.classList.remove("active"));
-  document.querySelectorAll(".module-section").forEach(s => s.classList.add("hidden"));
-
-  const navBtn = document.getElementById(`nav-btn-${modId}`);
-  const section = document.getElementById(`section-${modId}`);
-
-  if (navBtn) navBtn.classList.add("active");
-  if (section) section.classList.remove("hidden");
-
-  if (modId === "mod3") {
-    loadExecutiveSummary();
-  }
+function onQualityTaskDeptChange() {
+  const deptId = document.getElementById("new-quality-dept").value;
+  const lineSelect = document.getElementById("new-quality-line");
+  const filtered = allAssemblyLines.filter(l => l.department_id === deptId);
+  lineSelect.innerHTML = filtered.length ? filtered.map(l => `<option value="${l.name}">${l.name}</option>`).join("") : '<option value="Пост контроля">Пост контроля</option>';
 }
 
-// ==================== MODULE 1: LINE ISSUES & REPORTING ====================
+// ==================== WORKER TERMINAL LOGIC ====================
 
-async function loadIssues() {
-  const deptSelect = document.getElementById("filter-dept-select");
-  const selectedDept = deptSelect ? deptSelect.value : "all";
-
-  try {
-    const url = selectedDept !== "all" ? `/api/issues?department_id=${selectedDept}` : "/api/issues";
-    const res = await fetch(url);
-    const data = await res.json();
-    allIssues = data.issues || [];
-    renderIssues(allIssues);
-  } catch (err) {
-    console.error("Error loading issues:", err);
-  }
-}
-
-function filterIssuesByStatus() {
-  const status = document.getElementById("filter-status-select").value;
-  if (status === "all") {
-    renderIssues(allIssues);
-  } else {
-    renderIssues(allIssues.filter(i => i.status === status));
-  }
-}
-
-function renderIssues(issues) {
-  const container = document.getElementById("issues-list-container");
-  if (!container) return;
-  const isUz = getLanguage() === "uz";
-
-  if (!issues || issues.length === 0) {
-    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted); background: #ffffff; border-radius: 12px; border: 1px solid var(--bg-card-border);"><i class="fa-solid fa-circle-check" style="font-size: 32px; color: var(--accent-emerald); margin-bottom: 12px;"></i><br>${t("noIssuesFound")}</div>`;
-    return;
-  }
-
-  container.innerHTML = issues.map(issue => {
-    const deptName = isUz ? issue.dept_name_uz : issue.dept_name_ru;
-    const severityBadge = getSeverityBadge(issue.severity);
-    const stepperHtml = renderStepper(issue.status);
-    const reporterName = issue.reporter_name || issue.created_by_user;
-
-    return `
-      <div class="issue-card">
-        <div class="issue-card-top">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span class="ticket-code">${issue.ticket_number}</span>
-            <span class="badge-tag badge-blue">${issue.dept_code || 'WS'}</span>
-          </div>
-          ${severityBadge}
-        </div>
-
-        <div>
-          <h3 class="issue-title">${issue.defect_type}</h3>
-          <div class="issue-line-sub">
-            <i class="fa-solid fa-location-dot" style="color: var(--primary-blue);"></i>
-            <span>${issue.line_name} (${deptName || ''})</span>
-          </div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap;">
-            <span><i class="fa-solid fa-user-pen"></i> ${t("lblReporter")} <strong>${reporterName}</strong></span>
-            ${issue.downtime_minutes > 0 ? `<span style="color: #b91c1c; font-weight: 700;"><i class="fa-solid fa-clock-rotate-left"></i> ${t("lblDowntime")} ${issue.downtime_minutes} min</span>` : ''}
-          </div>
-        </div>
-
-        ${stepperHtml}
-
-        <div class="issue-desc-box">
-          <strong>${t("defectDescLabel")}</strong> ${issue.description}
-          ${issue.assigned_to ? `<div style="margin-top: 6px; font-weight: 600; color: var(--primary-blue-dark);"><i class="fa-solid fa-user-check"></i> ${t("assignedToLabel")} ${issue.assigned_to}</div>` : ''}
-          ${issue.action_taken ? `<div style="margin-top: 6px; font-weight: 600; color: #15803d;"><i class="fa-solid fa-wrench"></i> ${t("actionTakenLabel")} ${issue.action_taken}</div>` : ''}
-        </div>
-
-        <div class="photos-compare-grid">
-          ${issue.initial_photo_url ? `
-            <div class="photo-compare-item" onclick="openPhotoViewer('${issue.initial_photo_url}', '${issue.ticket_number}')">
-              <img src="${issue.initial_photo_url}" alt="Rasm">
-              <div class="photo-compare-label"><i class="fa-solid fa-magnifying-glass"></i> ${t("lblBeforeFix")}</div>
-            </div>
-          ` : `
-            <div class="photo-compare-placeholder">
-              <i class="fa-solid fa-image"></i>
-              <span>${t("lblNoPhotoDefect")}</span>
-            </div>
-          `}
-
-          ${issue.verification_photo_url ? `
-            <div class="photo-compare-item" onclick="openPhotoViewer('${issue.verification_photo_url}', '${issue.ticket_number}')">
-              <img src="${issue.verification_photo_url}" alt="Rasm">
-              <div class="photo-compare-label" style="background: rgba(16, 185, 129, 0.9);"><i class="fa-solid fa-check"></i> ${t("lblAfterFix")}</div>
-            </div>
-          ` : `
-            <div class="photo-compare-placeholder">
-              <i class="fa-solid fa-camera-rotate"></i>
-              <span>${t("lblWaitingPhotoVerify")}</span>
-            </div>
-          `}
-        </div>
-
-        <div class="issue-action-btn-row">
-          ${renderIssueActionButtons(issue)}
-        </div>
-      </div>
-    `;
-  }).join("");
-}
-
-function getSeverityBadge(severity) {
-  if (severity === "critical_stop") {
-    return `<span class="badge-tag badge-stop-pulse"><i class="fa-solid fa-hand"></i> ${t("severityStop")}</span>`;
-  } else if (severity === "major") {
-    return `<span class="badge-tag badge-warning"><i class="fa-solid fa-triangle-exclamation"></i> ${t("severityMajor")}</span>`;
-  } else {
-    return `<span class="badge-tag badge-blue"><i class="fa-solid fa-circle-info"></i> ${t("severityMinor")}</span>`;
-  }
-}
-
-function renderStepper(status) {
-  const steps = [
-    { key: "open", num: 1, label: t("statusOpen") },
-    { key: "assigned", num: 2, label: "Usta" },
-    { key: "in_progress", num: 3, label: "Ta'mirlash" },
-    { key: "verification", num: 4, label: "Foto-tekshiruv" },
-    { key: "closed", num: 5, label: "Yopildi" }
-  ];
-
-  const order = { open: 1, assigned: 2, in_progress: 3, verification: 4, closed: 5 };
-  const currentLevel = order[status] || 1;
-
-  return `
-    <div class="lifecycle-stepper">
-      ${steps.map(s => {
-        let cls = "";
-        if (s.num < currentLevel) cls = "completed";
-        else if (s.num === currentLevel) cls = "active";
-        return `
-          <div class="stepper-step ${cls}">
-            <div class="stepper-circle">${cls === "completed" ? '<i class="fa-solid fa-check"></i>' : s.num}</div>
-            <div class="stepper-label">${s.label}</div>
-          </div>
-        `;
-      }).join("")}
-    </div>
-  `;
-}
-
-function renderIssueActionButtons(issue) {
-  if (currentUser && currentUser.role === "guest") return "";
-
-  switch (issue.status) {
-    case "open":
-      return `
-        <button class="btn-card-action" style="background: var(--primary-blue); color: #ffffff;" onclick="openAssignModal('${issue.id}')">
-          <i class="fa-solid fa-user-plus"></i> <span>${t("btnAssignMaster")}</span>
-        </button>
-      `;
-    case "assigned":
-      return `
-        <button class="btn-card-action" style="background: #0284c7; color: #ffffff;" onclick="startIssueWork('${issue.id}')">
-          <i class="fa-solid fa-play"></i> <span>${t("btnTakeInWork")}</span>
-        </button>
-      `;
-    case "in_progress":
-      return `
-        <button class="btn-card-action" style="background: #f59e0b; color: #ffffff;" onclick="openVerifyModal('${issue.id}')">
-          <i class="fa-solid fa-camera-retro"></i> <span>${t("btnSendVerification")}</span>
-        </button>
-      `;
-    case "verification":
-      return `
-        <button class="btn-card-action" style="background: #10b981; color: #ffffff;" onclick="closeIssueAction('${issue.id}')">
-          <i class="fa-solid fa-circle-check"></i> <span>${t("btnCloseIssue")}</span>
-        </button>
-      `;
-    case "closed":
-      return `
-        <div style="text-align: center; color: #15803d; font-weight: 700; font-size: 12px;">
-          <i class="fa-solid fa-circle-check"></i> ${t("statusClosed")}
-        </div>
-      `;
-    default:
-      return "";
-  }
-}
-
-function openAssignModal(issueId) {
-  document.getElementById("assign-issue-id").value = issueId;
-  document.getElementById("modal-assign-issue").classList.remove("hidden");
-}
-
-document.getElementById("form-assign-issue").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const issueId = document.getElementById("assign-issue-id").value;
-  const assigned_to = document.getElementById("assign-input-name").value.trim();
-
-  try {
-    const res = await fetch(`/api/issues/${issueId}/assign`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assigned_to })
-    });
-    if (res.ok) {
-      closeModal("modal-assign-issue");
-      document.getElementById("assign-input-name").value = "";
-      await loadIssues();
-    }
-  } catch (err) {
-    alert("Ошибка назначения мастера");
-  }
-});
-
-async function startIssueWork(issueId) {
-  try {
-    const res = await fetch(`/api/issues/${issueId}/start`, { method: "POST" });
-    if (res.ok) {
-      await loadIssues();
-    }
-  } catch (err) {
-    alert("Ошибка перевода в работу");
-  }
-}
-
-function openVerifyModal(issueId) {
-  document.getElementById("verify-issue-id").value = issueId;
-  document.getElementById("verify-action-taken").value = "";
-  document.getElementById("verify-photo-url").value = "";
-  document.getElementById("verify-photo-preview").classList.add("hidden");
-  currentVerifyPhotoUrl = "";
-  document.getElementById("modal-verify-issue").classList.remove("hidden");
-}
-
-document.getElementById("form-verify-issue").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const issueId = document.getElementById("verify-issue-id").value;
-  const action_taken = document.getElementById("verify-action-taken").value.trim();
-  const photoUrl = document.getElementById("verify-photo-url").value.trim() || currentVerifyPhotoUrl;
-
-  if (!photoUrl) {
-    alert(t("errSelectPhoto"));
-    return;
-  }
-
-  try {
-    const res = await fetch(`/api/issues/${issueId}/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action_taken, verification_photo_url: photoUrl })
-    });
-    if (res.ok) {
-      closeModal("modal-verify-issue");
-      await loadIssues();
-    }
-  } catch (err) {
-    alert("Ошибка отправки фото устранения");
-  }
-});
-
-async function closeIssueAction(issueId) {
-  if (!confirm("Подтвердить закрытие задачи?")) return;
-  try {
-    const res = await fetch(`/api/issues/${issueId}/close`, { method: "POST" });
-    if (res.ok) {
-      await loadIssues();
-    }
-  } catch (err) {
-    alert("Ошибка закрытия задачи");
-  }
-}
-
-function openNewIssueModal() {
-  document.getElementById("form-create-issue").reset();
-  removeIssuePhoto();
-  if (currentUser) {
-    document.getElementById("issue-reporter-name").value = currentUser.full_name || currentUser.username;
-  }
-  onIssueDeptChange();
-  document.getElementById("modal-new-issue").classList.remove("hidden");
-}
-
-function setupIssueUploadHandlers() {
-  const formCreateIssue = document.getElementById("form-create-issue");
-  if (formCreateIssue) {
-    formCreateIssue.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const reporter_name = document.getElementById("issue-reporter-name").value.trim();
-      const department_id = document.getElementById("issue-target-dept").value;
-      const line_name = document.getElementById("issue-line-name").value.trim();
-      const defect_type = document.getElementById("issue-defect-type").value.trim();
-      const severity = document.getElementById("issue-severity").value;
-      const downtime_minutes = parseInt(document.getElementById("issue-downtime-minutes").value) || 0;
-      const description = document.getElementById("issue-description").value.trim();
-      const photoUrl = document.getElementById("issue-photo-url").value.trim() || currentIssuePhotoUrl;
-
-      try {
-        const res = await fetch("/api/issues/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            reporter_name,
-            department_id,
-            line_name,
-            defect_type,
-            severity,
-            downtime_minutes,
-            description,
-            initial_photo_url: photoUrl
-          })
-        });
-        if (res.ok) {
-          closeModal("modal-new-issue");
-          await loadIssues();
-          alert("Проблема успешно зафиксирована!");
-        }
-      } catch (err) {
-        alert("Ошибка отправки данных");
-      }
-    });
-  }
-}
-
-function handleIssueFileSelect(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    const base64Data = e.target.result;
-    document.getElementById("issue-preview-img").src = base64Data;
-    document.getElementById("issue-photo-preview").classList.remove("hidden");
-
-    try {
-      const res = await fetch("/api/upload/photo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_data: base64Data, filename_prefix: "defect" })
-      });
-      const data = await res.json();
-      if (res.ok && data.photo_url) {
-        currentIssuePhotoUrl = data.photo_url;
-        document.getElementById("issue-photo-url").value = data.photo_url;
-      }
-    } catch (err) {
-      currentIssuePhotoUrl = base64Data;
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-function removeIssuePhoto() {
-  currentIssuePhotoUrl = "";
-  document.getElementById("issue-photo-url").value = "";
-  document.getElementById("issue-preview-img").src = "";
-  document.getElementById("issue-photo-preview").classList.add("hidden");
-}
-
-function handleVerifyFileSelect(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    const base64Data = e.target.result;
-    document.getElementById("verify-preview-img").src = base64Data;
-    document.getElementById("verify-photo-preview").classList.remove("hidden");
-
-    try {
-      const res = await fetch("/api/upload/photo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_data: base64Data, filename_prefix: "resolved" })
-      });
-      const data = await res.json();
-      if (res.ok && data.photo_url) {
-        currentVerifyPhotoUrl = data.photo_url;
-        document.getElementById("verify-photo-url").value = data.photo_url;
-      }
-    } catch (err) {
-      currentVerifyPhotoUrl = base64Data;
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-// ==================== MODULE 2: BIQS AUDITS ====================
-
-async function loadAudits() {
-  try {
-    const res = await fetch("/api/audits/biqs");
-    const data = await res.json();
-    const audits = data.audits || [];
-    renderAudits(audits);
-  } catch (err) {
-    console.error("Error loading audits:", err);
-  }
-}
-
-function renderAudits(audits) {
-  const container = document.getElementById("audits-list-container");
-  if (!container) return;
-  const isUz = getLanguage() === "uz";
-
-  if (!audits || audits.length === 0) {
-    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted); background: #ffffff; border-radius: 12px; border: 1px solid var(--bg-card-border);"><i class="fa-solid fa-clipboard-check" style="font-size: 32px; color: var(--primary-blue); margin-bottom: 12px;"></i><br>Аудитов качества пока не зафиксировано.</div>`;
-    return;
-  }
-
-  container.innerHTML = audits.map(audit => {
-    const deptName = isUz ? audit.dept_name_uz : audit.dept_name_ru;
-    return `
-      <div class="audit-card">
-        <div class="audit-card-header">
-          <div>
-            <div style="font-size: 11px; font-weight: 700; color: var(--primary-blue-dark); text-transform: uppercase;">
-              ${audit.dept_code}: ${deptName || ''}
-            </div>
-            <h3 style="font-size: 15px; font-weight: 800; color: var(--primary-navy); margin-top: 2px;">
-              ${audit.line_name}
-            </h3>
-          </div>
-          <div class="audit-score-pill">
-            ${audit.compliance_score}%
-          </div>
-        </div>
-
-        <div style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
-          <span><i class="fa-solid fa-user-tie"></i> ${audit.auditor_name}</span>
-          <span>•</span>
-          <span><i class="fa-solid fa-clock"></i> ${audit.created_at}</span>
-        </div>
-
-        <div class="audit-worker-box">
-          <strong><i class="fa-solid fa-person-circle-question"></i> ${t("workerKnowledgeLabel")}</strong><br>
-          ${audit.worker_name} — <span style="font-weight: 700; color: ${audit.worker_knowledge_status.includes('Знает') || audit.worker_knowledge_status.includes('biladi') ? '#15803d' : '#b45309'};">${audit.worker_knowledge_status}</span>
-        </div>
-
-        <div class="audit-questions-box">
-          ${(audit.questions || []).map(q => `
-            <div class="audit-q-item">
-              <div style="max-width: 80%;">
-                <strong>${q.section}</strong>: ${q.question}<br>
-                ${q.comment ? `<span style="color: var(--text-muted); font-size: 10px;">${q.comment}</span>` : ''}
-              </div>
-              <span class="badge-tag ${q.status === 'passed' ? 'badge-green' : 'badge-danger'}">
-                ${q.status === 'passed' ? t("statusPassed") : t("statusViolation")}
-              </span>
-            </div>
-          `).join("")}
-        </div>
-
-        ${audit.violation_photos && audit.violation_photos.length > 0 ? `
-          <div>
-            <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px;"><i class="fa-solid fa-camera"></i> ${t("violationPhotosLabel")}</div>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              ${audit.violation_photos.map(p => `
-                <img src="${p}" style="width: 80px; height: 60px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid var(--bg-card-border);" onclick="openPhotoViewer('${p}', 'Фото нарушения BIQS')" alt="Фото нарушения">
-              `).join("")}
-            </div>
-          </div>
-        ` : ''}
-
-        ${audit.comments ? `
-          <div style="font-size: 11px; font-style: italic; color: var(--text-muted); background: #f1f5f9; padding: 6px 10px; border-radius: 4px;">
-            <i class="fa-solid fa-quote-left"></i> ${audit.comments}
-          </div>
-        ` : ''}
-      </div>
-    `;
-  }).join("");
-}
-
-function openNewAuditModal() {
-  const isUz = getLanguage() === "uz";
-  document.getElementById("audit-auditor-name").value = currentUser.full_name || currentUser.username;
-  document.getElementById("audit-line-input").value = "";
-  document.getElementById("audit-worker-name").value = "";
-  document.getElementById("audit-violation-photo").value = "";
-  document.getElementById("audit-comments").value = "";
-
-  const container = document.getElementById("audit-questions-container");
-  container.innerHTML = BIQS_STANDARD_QUESTIONS.map((q, idx) => `
-    <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <span style="font-size: 12px; font-weight: 700; color: var(--primary-navy);">${q.section}</span>
-        <div style="display: flex; gap: 8px;">
-          <label style="font-size: 11px; font-weight: 600; color: #15803d; cursor: pointer;">
-            <input type="radio" name="audit_q_${idx}" value="passed" checked> ${t("statusPassed")}
-          </label>
-          <label style="font-size: 11px; font-weight: 600; color: #b91c1c; cursor: pointer;">
-            <input type="radio" name="audit_q_${idx}" value="violation"> ${t("statusViolation")}
-          </label>
-        </div>
-      </div>
-      <div style="font-size: 11px; color: var(--text-muted);">${isUz ? q.question_uz : q.question_ru}</div>
-      <input type="text" id="audit_comment_${idx}" class="form-input" placeholder="Комментарий..." style="margin-top: 6px; padding: 4px 8px; font-size: 11px;">
-    </div>
-  `).join("");
-
-  document.getElementById("modal-biqs-audit").classList.remove("hidden");
-}
-
-const formCreateAudit = document.getElementById("form-create-audit");
-if (formCreateAudit) {
-  formCreateAudit.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const department_id = document.getElementById("audit-dept-select").value;
-    const line_name = document.getElementById("audit-line-input").value.trim();
-    const auditor_name = document.getElementById("audit-auditor-name").value.trim();
-    const worker_name = document.getElementById("audit-worker-name").value.trim();
-    const worker_knowledge_status = document.getElementById("audit-worker-knowledge").value;
-    const violation_photo = document.getElementById("audit-violation-photo").value.trim();
-    const comments = document.getElementById("audit-comments").value.trim();
-
-    let passedCount = 0;
-    const isUz = getLanguage() === "uz";
-    const questions = BIQS_STANDARD_QUESTIONS.map((q, idx) => {
-      const radio = document.querySelector(`input[name="audit_q_${idx}"]:checked`);
-      const status = radio ? radio.value : "passed";
-      if (status === "passed") passedCount++;
-      const comment = document.getElementById(`audit_comment_${idx}`).value.trim();
-      return {
-        section: q.section,
-        question: isUz ? q.question_uz : q.question_ru,
-        status,
-        comment
-      };
-    });
-
-    const compliance_score = Math.round((passedCount / BIQS_STANDARD_QUESTIONS.length) * 1000) / 10;
-    const violation_photos = violation_photo ? [violation_photo] : [];
-
-    try {
-      const res = await fetch("/api/audits/biqs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          department_id,
-          line_name,
-          auditor_name,
-          worker_name,
-          worker_knowledge_status,
-          compliance_score,
-          questions,
-          violation_photos,
-          comments
-        })
-      });
-      if (res.ok) {
-        closeModal("modal-biqs-audit");
-        await loadAudits();
-        if (currentUser.role === "admin" || currentUser.role === "director") {
-          await loadExecutiveSummary();
-        }
-      }
-    } catch (err) {
-      alert("Ошибка сохранения аудита");
-    }
-  });
-}
-
-// ==================== MODULE 3: EXECUTIVE SUMMARY ====================
-
-async function loadExecutiveSummary() {
-  try {
-    const res = await fetch("/api/dashboard/summary");
-    const data = await res.json();
-
-    document.getElementById("kpi-total-val").textContent = data.total_issues || 0;
-    document.getElementById("kpi-open-val").textContent = data.open_issues || 0;
-    document.getElementById("kpi-active-val").textContent = data.active_issues || 0;
-    document.getElementById("kpi-closed-val").textContent = data.closed_issues || 0;
-    document.getElementById("kpi-biqs-val").textContent = `${data.avg_biqs_score}%`;
-    document.getElementById("kpi-sla-val").textContent = `${data.total_downtime_minutes || 0} мин`;
-
-    renderExecutiveCharts(data);
-    renderExecutiveTable(data.departments_matrix || []);
-  } catch (err) {
-    console.error("Error loading summary:", err);
-  }
-}
-
-function renderExecutiveCharts(data) {
-  const ctxStatus = document.getElementById("chartIssuesStatus");
-  if (ctxStatus) {
-    if (chartStatusInstance) chartStatusInstance.destroy();
-    chartStatusInstance = new Chart(ctxStatus, {
-      type: "doughnut",
-      data: {
-        labels: [t("statusOpen"), t("kpiInWork"), t("statusClosed")],
-        datasets: [{
-          data: [data.open_issues || 0, data.active_issues || 0, data.closed_issues || 0],
-          backgroundColor: ["#ef4444", "#f59e0b", "#10b981"],
-          borderWidth: 2,
-          borderColor: "#ffffff"
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: "70%",
-        plugins: {
-          legend: { position: "bottom", labels: { font: { size: 11 }, boxWidth: 12 } }
-        }
-      }
-    });
-  }
-
-  const ctxBiqs = document.getElementById("chartBiqsDepts");
-  if (ctxBiqs && data.departments_matrix) {
-    if (chartBiqsInstance) chartBiqsInstance.destroy();
-    const labels = data.departments_matrix.map(d => d.code);
-    const scores = data.departments_matrix.map(d => d.compliance_score);
-
-    chartBiqsInstance = new Chart(ctxBiqs, {
-      type: "bar",
-      data: {
-        labels,
-        datasets: [{
-          label: t("kpiBiqsIndex") + " (%)",
-          data: scores,
-          backgroundColor: scores.map(s => s >= 95 ? "rgba(16, 185, 129, 0.85)" : "rgba(245, 158, 11, 0.85)"),
-          borderRadius: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          y: { min: 80, max: 100, grid: { color: "#e2e8f0" } },
-          x: { grid: { display: false } }
-        },
-        plugins: {
-          legend: { display: false }
-        }
-      }
-    });
-  }
-}
-
-function renderExecutiveTable(depts) {
-  const tbody = document.getElementById("executive-dept-rows");
-  if (!tbody) return;
-  const isUz = getLanguage() === "uz";
-
-  tbody.innerHTML = depts.map(d => `
-    <tr>
-      <td><strong>${d.code}</strong></td>
-      <td><strong>${isUz ? d.name_uz : d.name_ru}</strong></td>
-      <td>${d.head_name}</td>
-      <td style="font-weight: 700; color: var(--primary-blue-dark);">${d.issue_count || 0}</td>
-      <td><span class="badge-tag ${(d.open_count || 0) > 0 ? 'badge-danger' : 'badge-green'}">${d.open_count || 0}</span></td>
-      <td><span class="badge-tag badge-green">${d.closed_count || 0}</span></td>
-      <td><strong style="color: #15803d;">${d.compliance_score}%</strong></td>
-      <td><span class="badge-tag badge-green">В норме</span></td>
-    </tr>
-  `).join("");
-}
-
-// ==================== MODULE 4: ADMIN PANEL SUBTABS ====================
-
-function switchAdminSubTab(tabName) {
-  document.querySelectorAll("#section-mod4 .filter-select").forEach(b => b.classList.remove("active"));
-  document.querySelectorAll(".admin-subtab").forEach(s => s.classList.add("hidden"));
-
-  const btn = document.getElementById(`admin-tab-btn-${tabName}`);
-  const target = document.getElementById(`admin-subtab-${tabName}`);
-
-  if (btn) btn.classList.add("active");
-  if (target) target.classList.remove("hidden");
-
-  if (tabName === "keys") loadAdminKeys();
-  if (tabName === "lines") loadAdminLines();
-  if (tabName === "users") loadAdminUsers();
-  if (tabName === "logs") loadAdminLogs();
-}
-
-async function loadAdminKeys() {
-  try {
-    const res = await fetch("/api/admin/invite-keys");
-    const data = await res.json();
-    const tbody = document.getElementById("invite-keys-rows");
-    if (!tbody) return;
-    const keys = data.keys || [];
-
-    tbody.innerHTML = keys.map(k => `
-      <tr>
-        <td>
-          <code style="font-weight: 800; font-size: 13px; color: var(--primary-blue-dark); cursor: pointer;" onclick="copyKey('${k.key_code}')" title="Кликните для копирования">
-            ${k.key_code} <i class="fa-solid fa-copy" style="font-size: 11px;"></i>
-          </code>
-        </td>
-        <td><span class="badge-tag badge-blue">${k.role}</span></td>
-        <td>${k.dept_code ? `${k.dept_code} (${k.dept_name_ru})` : 'Все цеха'}</td>
-        <td><strong>${k.used_count}</strong> / ${k.max_uses}</td>
-        <td>
-          <span class="badge-tag ${k.is_active ? 'badge-green' : 'badge-danger'}">
-            ${k.is_active ? 'Активен' : 'Исчерпан / Отозван'}
-          </span>
-        </td>
-        <td style="color: var(--text-muted); font-size: 11px;">${k.note || '—'}</td>
-        <td>
-          <button type="button" class="btn-primary-block" style="padding: 4px 8px; font-size: 11px; width: auto; background: ${k.is_active ? '#fee2e2' : '#dcfce7'}; color: ${k.is_active ? '#dc2626' : '#15803d'}; border: 1px solid ${k.is_active ? '#fca5a5' : '#86efac'};" onclick="toggleKey('${k.id}')">
-            ${k.is_active ? t("btnRevoke") : t("btnActivate")}
-          </button>
-        </td>
-      </tr>
-    `).join("");
-  } catch (err) {
-    console.error("Error loading keys:", err);
-  }
-}
-
-async function loadAdminLines() {
-  try {
-    const res = await fetch("/api/lines");
-    const data = await res.json();
-    const tbody = document.getElementById("admin-lines-rows");
-    if (!tbody) return;
-    const lines = data.lines || [];
-
-    tbody.innerHTML = lines.map(l => `
-      <tr>
-        <td><span class="badge-tag badge-blue">${l.dept_code || l.department_id}</span></td>
-        <td><strong>${l.name}</strong></td>
-        <td style="color: var(--text-muted); font-size: 12px;">${l.description || '—'}</td>
-        <td><span class="badge-tag ${l.is_active ? 'badge-green' : 'badge-danger'}">${l.is_active ? 'Активна' : 'Отключена'}</span></td>
-        <td>
-          <button type="button" class="btn-cancel" style="padding: 3px 8px; font-size: 11px; color: #dc2626;" onclick="deleteLine('${l.id}')">
-            <i class="fa-solid fa-trash"></i> Удалить
-          </button>
-        </td>
-      </tr>
-    `).join("");
-  } catch (err) {
-    console.error("Error loading admin lines:", err);
-  }
-}
-
-async function loadAdminUsers() {
-  try {
-    const res = await fetch("/api/admin/users");
-    const data = await res.json();
-    const tbody = document.getElementById("admin-users-rows");
-    if (!tbody) return;
-    const users = data.users || [];
-
-    tbody.innerHTML = users.map(u => `
-      <tr>
-        <td><strong>${u.username}</strong></td>
-        <td>${u.full_name}</td>
-        <td><span class="badge-tag badge-blue">${u.role}</span></td>
-        <td>${u.dept_code ? `${u.dept_code} (${u.dept_name_ru})` : 'Все цеха'}</td>
-        <td>
-          <span class="badge-tag ${u.is_active !== 0 ? 'badge-green' : 'badge-danger'}">
-            ${u.is_active !== 0 ? 'Активен' : 'Заблокирован'}
-          </span>
-        </td>
-        <td style="color: var(--text-muted); font-size: 11px;">${u.created_at}</td>
-        <td>
-          <button type="button" class="btn-cancel" style="padding: 3px 8px; font-size: 11px;" onclick="toggleUserActive('${u.id}')">
-            ${u.is_active !== 0 ? 'Заблокировать' : 'Разблокировать'}
-          </button>
-        </td>
-      </tr>
-    `).join("");
-  } catch (err) {
-    console.error("Error loading users:", err);
-  }
-}
-
-async function loadAdminLogs() {
-  try {
-    const res = await fetch("/api/admin/logs");
-    const data = await res.json();
-    const tbody = document.getElementById("admin-logs-rows");
-    if (!tbody) return;
-    const logs = data.logs || [];
-
-    tbody.innerHTML = logs.map(l => `
-      <tr>
-        <td style="font-size: 11px; color: var(--text-muted);">${l.created_at}</td>
-        <td><strong>${l.username || 'Система'}</strong></td>
-        <td><span class="badge-tag badge-blue">${l.action}</span></td>
-        <td style="font-size: 11px;">${l.detail || '—'}</td>
-        <td style="font-size: 11px; font-family: monospace;">${l.ip_address || '—'}</td>
-      </tr>
-    `).join("");
-  } catch (err) {
-    console.error("Error loading logs:", err);
-  }
-}
-
-function openCreateLineModal() {
-  document.getElementById("form-create-line").reset();
-  const lineDeptSelect = document.getElementById("line-dept-select");
-  if (lineDeptSelect && allDepartments.length > 0) {
-    const isUz = getLanguage() === "uz";
-    lineDeptSelect.innerHTML = allDepartments.map(d => `<option value="${d.id}">${d.code}: ${isUz ? d.name_uz : d.name_ru}</option>`).join("");
-  }
-  document.getElementById("modal-create-line").classList.remove("hidden");
-}
-
-function setupLineCreateHandler() {
-  const form = document.getElementById("form-create-line");
+function setupWorkerShiftInputHandler() {
+  const form = document.getElementById("form-worker-shift-input");
   if (!form) return;
-
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const department_id = document.getElementById("line-dept-select").value;
-    const name = document.getElementById("line-name-input").value.trim();
-    const description = document.getElementById("line-desc-input").value.trim();
+    const payload = {
+      department_id: document.getElementById("wsi-dept").value,
+      line_name: document.getElementById("wsi-line").value,
+      article: document.getElementById("wsi-article").value,
+      units_made: parseInt(document.getElementById("wsi-made").value) || 0,
+      defects_count: parseInt(document.getElementById("wsi-defects").value) || 0,
+      defect_reason: document.getElementById("wsi-reason").value,
+      breakdown_notes: document.getElementById("wsi-breakdown").value
+    };
 
     try {
-      const res = await fetch("/api/admin/lines", {
+      const res = await fetch("/api/worker/input", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ department_id, name, description })
-      });
-      if (res.ok) {
-        closeModal("modal-create-line");
-        await loadAssemblyLines();
-        await loadAdminLines();
-        alert("Линия сборки успешно добавлена!");
-      }
-    } catch (err) {
-      alert("Ошибка создания линии");
-    }
-  });
-}
-
-async function deleteLine(lineId) {
-  if (!confirm("Удалить эту линию сборки?")) return;
-  try {
-    const res = await fetch(`/api/admin/lines/${lineId}`, { method: "DELETE" });
-    if (res.ok) {
-      await loadAssemblyLines();
-      await loadAdminLines();
-    }
-  } catch (err) {
-    alert("Ошибка удаления линии");
-  }
-}
-
-async function toggleUserActive(userId) {
-  try {
-    const res = await fetch(`/api/admin/users/${userId}/toggle`, { method: "POST" });
-    if (res.ok) {
-      await loadAdminUsers();
-    }
-  } catch (err) {
-    alert("Ошибка изменения статуса пользователя");
-  }
-}
-
-function setupAdminCreateUserHandler() {
-  const form = document.getElementById("form-admin-create-user");
-  if (!form) return;
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const username = document.getElementById("admin-new-username").value.trim();
-    const password = document.getElementById("admin-new-password").value.trim();
-    const full_name = document.getElementById("admin-new-fullname").value.trim();
-    const role = document.getElementById("admin-new-role").value;
-    const department_id = document.getElementById("admin-new-dept").value;
-    const msgBox = document.getElementById("admin-create-user-msg");
-
-    try {
-      const res = await fetch("/api/admin/create-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, full_name, role, department_id })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
-      if (res.ok && data.status === "success") {
-        msgBox.textContent = t("msgUserCreatedSuccess");
-        msgBox.style.background = "#dcfce7";
-        msgBox.style.color = "#15803d";
-        msgBox.classList.remove("hidden");
+      if (res.ok) {
+        alert("✅ " + data.message);
         form.reset();
-        await loadAdminUsers();
-        setTimeout(() => msgBox.classList.add("hidden"), 5000);
+        loadWorkerInputs();
+        loadExecutiveBI();
       } else {
-        msgBox.textContent = data.detail || "Ошибка создания пользователя";
-        msgBox.style.background = "#fee2e2";
-        msgBox.style.color = "#b91c1c";
-        msgBox.classList.remove("hidden");
+        alert("Ошибка: " + (data.detail || "Не удалось сохранить"));
       }
     } catch (err) {
       alert("Ошибка отправки данных");
@@ -1220,74 +463,1245 @@ function setupAdminCreateUserHandler() {
   });
 }
 
-function openCreateKeyModal() {
-  document.getElementById("form-create-key").reset();
-  document.getElementById("modal-create-key").classList.remove("hidden");
+async function loadWorkerInputs() {
+  const tbody = document.getElementById("worker-inputs-rows");
+  if (!tbody) return;
+  try {
+    const res = await fetch("/api/worker/my-inputs");
+    const data = await res.json();
+    const rows = data.inputs || [];
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:16px;">Нет записей за смену. Введите данные выработки выше.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td style="font-size:12px; font-weight:700;">${r.created_at ? r.created_at.slice(11, 16) : '--:--'}</td>
+        <td><strong>${r.line_name}</strong></td>
+        <td>${r.article}</td>
+        <td><span class="badge-tag badge-blue" style="font-size:13px; font-weight:800;">${r.units_made} шт</span></td>
+        <td><span class="badge-tag ${r.defects_count > 0 ? 'badge-red' : 'badge-green'}">${r.defects_count} шт</span></td>
+        <td>${r.defect_reason || '<span style="color:#94a3b8;">нет брака</span>'}</td>
+        <td>${r.breakdown_notes || '<span style="color:#94a3b8;">работа без сбоев</span>'}</td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error("Error loading worker inputs", err);
+  }
 }
 
-const formCreateKey = document.getElementById("form-create-key");
-if (formCreateKey) {
-  formCreateKey.addEventListener("submit", async (e) => {
+// ==================== ANDON & ESCALATION SYSTEM ====================
+
+function openAndonTriggerModal() {
+  document.getElementById("modal-andon-trigger").classList.remove("hidden");
+}
+
+function setupAndonTriggerHandler() {
+  const form = document.getElementById("form-andon-trigger");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const role = document.getElementById("key-role-select").value;
-    const department_id = document.getElementById("key-dept-select").value;
-    const max_uses = parseInt(document.getElementById("key-max-uses").value) || 10;
-    const note = document.getElementById("key-note").value.trim();
+    const payload = {
+      department_id: document.getElementById("andon-target-dept").value,
+      line_name: document.getElementById("andon-line-name").value,
+      defect_type: document.getElementById("andon-defect-type").value,
+      error_code: document.getElementById("andon-error-code").value,
+      target_service: document.getElementById("andon-target-service").value,
+      severity: "critical_stop",
+      description: document.getElementById("andon-description").value
+    };
 
     try {
-      const res = await fetch("/api/admin/invite-keys", {
+      const res = await fetch("/api/andon/trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role, department_id, max_uses, note })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
-      if (res.ok && data.status === "success") {
-        closeModal("modal-create-key");
-        copyKey(data.key_code);
-        alert(`${t("msgSuccessKeyCreated")}\n\nКод: ${data.key_code}`);
-        await loadAdminKeys();
+      if (res.ok) {
+        alert("🚨 СИГНАЛ ANDON ПРИНЯТ: №" + data.ticket_number + "\nОповещение разослано ремонтникам ОГМ и мастеру цеха!");
+        closeModal("modal-andon-trigger");
+        form.reset();
+        loadAndonFeed();
+        loadExecutiveBI();
+      } else {
+        alert("Ошибка: " + data.detail);
       }
     } catch (err) {
-      alert("Ошибка генерации ключа");
+      alert("Ошибка отправки сигнала Andon");
     }
   });
 }
 
-async function toggleKey(keyId) {
+async function loadAndonFeed() {
+  const container = document.getElementById("andon-feed-container");
+  const deptFilter = document.getElementById("filter-andon-dept") ? document.getElementById("filter-andon-dept").value : "all";
   try {
-    await fetch(`/api/admin/invite-keys/${keyId}/toggle`, { method: "POST" });
-    await loadAdminKeys();
+    const res = await fetch(`/api/andon/feed?department_id=${deptFilter}`);
+    const data = await res.json();
+    allAndonEvents = data.events || [];
+    const stats = data.stats || {};
+
+    const activeBadge = document.getElementById("nav-andon-active-badge");
+    if (activeBadge) {
+      if (stats.active_stops > 0) {
+        activeBadge.textContent = stats.active_stops;
+        activeBadge.style.display = "inline-block";
+      } else {
+        activeBadge.style.display = "none";
+      }
+    }
+
+    if (!container) return;
+    if (!allAndonEvents.length) {
+      container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:40px; color:#64748b; background:#fff; border-radius:12px;">✅ Все линии работают в штатном режиме. Активных аварий нет.</div>';
+      return;
+    }
+
+    container.innerHTML = allAndonEvents.map(ev => {
+      const isEscalated = ev.escalated_to_director || ev.current_downtime_minutes >= 30;
+      const isClosed = ev.status === "closed";
+      const isVerification = ev.status === "verification";
+
+      let statusBadge = '<span class="badge-tag badge-red">🚨 Линия остановлена</span>';
+      if (isVerification) statusBadge = '<span class="badge-tag badge-gold">⚙️ Ремонт выполнен, проверка ОТК</span>';
+      if (isClosed) statusBadge = '<span class="badge-tag badge-green">✅ Разблокирована</span>';
+
+      return `
+        <div class="andon-card ${isClosed ? 'andon-closed' : (isEscalated ? 'andon-escalated' : (isVerification ? 'andon-verified' : 'andon-critical'))}">
+          <div class="andon-card-header">
+            <span class="andon-ticket-pill">${ev.ticket_number}</span>
+            <div style="display:flex; gap:6px; align-items:center;">
+              ${statusBadge}
+              <span class="andon-downtime-badge ${isEscalated ? 'badge-escalated' : ''}">
+                <i class="fa-solid fa-clock"></i> ${ev.current_downtime_minutes} мин
+              </span>
+            </div>
+          </div>
+
+          ${isEscalated && !isClosed ? `
+            <div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:6px 10px; border-radius:8px; font-size:11px; font-weight:800; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+              <i class="fa-solid fa-triangle-exclamation"></i> ЭСКАЛИРОВАНО ГЕНЕРАЛЬНОМУ ДИРЕКТОРУ (>30 мин)
+            </div>
+          ` : ''}
+
+          ${ev.error_code ? `<span class="andon-error-tag">Код: ${ev.error_code}</span>` : ''}
+          <div class="andon-line-title">${ev.line_name}</div>
+          <div style="font-size:12px; color:#0284c7; font-weight:700; margin-bottom:4px;">${ev.defect_type}</div>
+          <div class="andon-desc-text">${ev.description}</div>
+
+          ${ev.mechanic_notes ? `
+            <div class="andon-resolution-box">
+              <strong style="color:#0369a1;"><i class="fa-solid fa-wrench"></i> Механик (${ev.mechanic_name || 'ОГМ'}):</strong>
+              <div style="margin-top:2px;">${ev.mechanic_notes}</div>
+            </div>
+          ` : ''}
+
+          ${ev.controller_notes ? `
+            <div class="andon-resolution-box" style="background:#ecfdf5; border-color:#a7f3d0;">
+              <strong style="color:#065f46;"><i class="fa-solid fa-circle-check"></i> Контролёр (${ev.controller_name || 'ОТК'}):</strong>
+              <div style="margin-top:2px;">${ev.controller_notes}</div>
+            </div>
+          ` : ''}
+
+          <div class="andon-actions-bar">
+            ${!isClosed && ev.status !== 'verification' ? `
+              <button type="button" class="btn-compact-action" style="background:#0284c7; color:#fff;" onclick="openMechanicResolveModal('${ev.id}')">
+                <i class="fa-solid fa-wrench"></i> Отчитаться о ремонте (ОГМ)
+              </button>
+            ` : ''}
+
+            ${ev.status === 'verification' ? `
+              <button type="button" class="btn-compact-action" style="background:#10b981; color:#fff;" onclick="openControllerUnlockModal('${ev.id}')">
+                <i class="fa-solid fa-lock-open"></i> Проверить и разблокировать (ОТК)
+              </button>
+            ` : ''}
+
+            ${isClosed ? `
+              <span style="font-size:11px; color:#10b981; font-weight:700;"><i class="fa-solid fa-check-double"></i> Инцидент закрыт</span>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    // Populate OTK Red Box Table as well
+    loadOtkRedBoxTable();
+    loadMechanicRepairs();
   } catch (err) {
-    alert("Ошибка изменения статуса ключа");
+    console.error("Error loading Andon feed", err);
   }
 }
 
-function copyKey(code) {
-  navigator.clipboard.writeText(code);
+// Mechanic Resolve Modal
+function openMechanicResolveModal(issueId) {
+  const ev = allAndonEvents.find(e => e.id === issueId);
+  if (!ev) return;
+  document.getElementById("resolve-issue-id").value = issueId;
+  document.getElementById("resolve-issue-summary").innerHTML = `
+    <strong>${ev.ticket_number} - ${ev.line_name}</strong>
+    <div>${ev.defect_type} (${ev.error_code || 'Без кода'})</div>
+    <div style="font-size:12px; color:#64748b; margin-top:4px;">${ev.description}</div>
+  `;
+  document.getElementById("modal-mechanic-resolve").classList.remove("hidden");
 }
 
-function openPhotoViewer(url, title) {
-  document.getElementById("photo-viewer-title").textContent = title || "Фотоматериал";
-  document.getElementById("photo-viewer-img").src = url;
-  document.getElementById("modal-photo-viewer").classList.remove("hidden");
+function setupMechanicResolveHandler() {
+  const form = document.getElementById("form-mechanic-resolve");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const issueId = document.getElementById("resolve-issue-id").value;
+    const mechanic_notes = document.getElementById("resolve-mechanic-notes").value;
+
+    try {
+      const res = await fetch(`/api/andon/${issueId}/mechanic-resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mechanic_notes, mechanic_name: currentUser ? currentUser.full_name : "Механик ОГМ" })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("✅ Ремонт зафиксирован. Линия передана Контролёру ОТК для проверки первой детали.");
+        closeModal("modal-mechanic-resolve");
+        form.reset();
+        loadAndonFeed();
+      }
+    } catch (err) {
+      alert("Ошибка сохранения отчёта");
+    }
+  });
 }
+
+// Controller Unlock Modal
+function openControllerUnlockModal(issueId) {
+  const ev = allAndonEvents.find(e => e.id === issueId);
+  if (!ev) return;
+  document.getElementById("unlock-issue-id").value = issueId;
+  document.getElementById("unlock-issue-summary").innerHTML = `
+    <strong>${ev.ticket_number} - ${ev.line_name}</strong>
+    <div style="color:#0369a1; font-weight:700; margin-top:2px;">Отчёт механика: ${ev.mechanic_notes}</div>
+  `;
+  document.getElementById("modal-controller-unlock").classList.remove("hidden");
+}
+
+function setupControllerUnlockHandler() {
+  const form = document.getElementById("form-controller-unlock");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const issueId = document.getElementById("unlock-issue-id").value;
+    const controller_notes = document.getElementById("unlock-controller-notes").value;
+
+    try {
+      const res = await fetch(`/api/andon/${issueId}/controller-unlock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ controller_notes, controller_name: currentUser ? currentUser.full_name : "Контролёр ОТК" })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("🎉 ЛИНИЯ УСПЕШНО РАЗБЛОКИРОВАНА И ЗАПУЩЕНА!");
+        closeModal("modal-controller-unlock");
+        form.reset();
+        loadAndonFeed();
+        loadExecutiveBI();
+      }
+    } catch (err) {
+      alert("Ошибка разблокировки линии");
+    }
+  });
+}
+
+function loadOtkRedBoxTable() {
+  const tbody = document.getElementById("otk-redbox-rows");
+  if (!tbody) return;
+  tbody.innerHTML = allAndonEvents.map(ev => `
+    <tr>
+      <td><strong>${ev.ticket_number}</strong></td>
+      <td>${ev.line_name}</td>
+      <td>${ev.defect_type}</td>
+      <td><span class="badge-tag badge-red">${ev.current_downtime_minutes} мин</span></td>
+      <td>${ev.mechanic_notes || '<span style="color:#94a3b8;">в процессе ремонта</span>'}</td>
+      <td>${ev.status === 'closed' ? '<span class="badge-tag badge-green">Разблокирована</span>' : '<span class="badge-tag badge-gold">Заблокирована</span>'}</td>
+      <td>
+        ${ev.status === 'verification' ? `
+          <button class="btn-compact-action" style="background:#10b981; color:#fff;" onclick="openControllerUnlockModal('${ev.id}')">
+            Разблокировать
+          </button>
+        ` : (ev.status === 'closed' ? '<span style="color:#10b981;">✓ Готово</span>' : '<span style="color:#64748b;">Ожидает ОГМ</span>')}
+      </td>
+    </tr>
+  `).join("");
+}
+
+function loadMechanicRepairs() {
+  const tbody = document.getElementById("mechanic-repair-rows");
+  if (!tbody) return;
+  const activeRepairs = allAndonEvents.filter(e => e.status !== "closed");
+  if (!activeRepairs.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:16px; color:#94a3b8;">Все станки и сварочные комплексы исправны. Вызовов нет.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = activeRepairs.map(ev => `
+    <tr>
+      <td><strong>${ev.ticket_number}</strong></td>
+      <td>${ev.line_name}</td>
+      <td><span class="andon-error-tag">${ev.error_code || 'Сбой станка'}</span></td>
+      <td>${ev.description}</td>
+      <td><span class="badge-tag badge-red">${ev.current_downtime_minutes} мин</span></td>
+      <td>${ev.status === 'verification' ? '<span class="badge-tag badge-gold">На проверке ОТК</span>' : '<span class="badge-tag badge-red">Требует ремонта</span>'}</td>
+      <td>
+        ${ev.status !== 'verification' ? `
+          <button class="btn-action-primary" style="font-size:11px; padding:4px 8px;" onclick="openMechanicResolveModal('${ev.id}')">
+            Завершить ремонт
+          </button>
+        ` : '<span style="color:#0284c7;">Передано ОТК</span>'}
+      </td>
+    </tr>
+  `).join("");
+}
+
+// ==================== SHIFT REPORTS MODULE ====================
+
+function openSubmitShiftReportModal() {
+  const todayStr = new Date().toISOString().split("T")[0];
+  const srDate = document.getElementById("sr-date");
+  if (srDate) srDate.value = todayStr;
+  document.getElementById("modal-submit-shift-report").classList.remove("hidden");
+}
+
+function setupShiftReportHandler() {
+  const form = document.getElementById("form-submit-shift-report");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      department_id: document.getElementById("sr-dept").value,
+      report_date: document.getElementById("sr-date").value,
+      shift: document.getElementById("sr-shift").value,
+      plan_units: parseInt(document.getElementById("sr-plan").value) || 0,
+      fact_units: parseInt(document.getElementById("sr-fact").value) || 0,
+      scrap_units: parseInt(document.getElementById("sr-scrap").value) || 0,
+      downtime_minutes: parseInt(document.getElementById("sr-downtime").value) || 0,
+      downtime_reason: document.getElementById("sr-downtime-reason").value,
+      resource_consumption: document.getElementById("sr-resources").value,
+      issues_summary: document.getElementById("sr-issues").value,
+      kaizen_suggestions: document.getElementById("sr-suggestions").value
+    };
+
+    try {
+      const res = await fetch("/api/shift-reports/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("✅ Сменный рапорт успешно отправлен и передан на рассмотрение Руководству!");
+        closeModal("modal-submit-shift-report");
+        form.reset();
+        loadShiftReports();
+        loadExecutiveBI();
+      } else {
+        alert("Ошибка: " + data.detail);
+      }
+    } catch (err) {
+      alert("Ошибка отправки рапорта");
+    }
+  });
+}
+
+async function loadShiftReports() {
+  const container = document.getElementById("shift-reports-container");
+  if (!container) return;
+  try {
+    const res = await fetch("/api/shift-reports");
+    const data = await res.json();
+    allShiftReports = data.reports || [];
+
+    if (!allShiftReports.length) {
+      container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:30px; color:#64748b;">Нет рапортов за текущую дату. Нажмите «Сдать сменный рапорт» выше.</div>';
+      return;
+    }
+
+    container.innerHTML = allShiftReports.map(sr => {
+      const rate = sr.plan_units > 0 ? ((sr.fact_units / sr.plan_units) * 100).toFixed(1) : 0;
+      let statusBadge = '<span class="badge-tag badge-gold">Сдан мастером</span>';
+      if (sr.status === 'reviewed_by_head') statusBadge = '<span class="badge-tag badge-blue">Завизирован начальником</span>';
+      if (sr.status === 'approved_by_director') statusBadge = '<span class="badge-tag badge-green">Утверждён Директором</span>';
+
+      return `
+        <div class="shift-report-card">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+              <span class="badge-tag badge-blue">${sr.shift}</span>
+              <h4 style="font-size:15px; font-weight:800; color:#0f172a; margin-top:4px;">${sr.dept_name}</h4>
+              <div style="font-size:12px; color:#64748b;">Автор: ${sr.author_name}</div>
+            </div>
+            ${statusBadge}
+          </div>
+
+          <div class="shift-report-kpis">
+            <div>
+              <div class="report-kpi-val">${sr.plan_units}</div>
+              <div class="report-kpi-lbl">План</div>
+            </div>
+            <div>
+              <div class="report-kpi-val" style="color:#0284c7;">${sr.fact_units}</div>
+              <div class="report-kpi-lbl">Факт (${rate}%)</div>
+            </div>
+            <div>
+              <div class="report-kpi-val" style="color:#ef4444;">${sr.scrap_units}</div>
+              <div class="report-kpi-lbl">Брак</div>
+            </div>
+            <div>
+              <div class="report-kpi-val" style="color:#d97706;">${sr.downtime_minutes}м</div>
+              <div class="report-kpi-lbl">Простой</div>
+            </div>
+          </div>
+
+          <div style="font-size:12px; color:#475569; margin-bottom:8px; line-height:1.4;">
+            <strong>Инциденты смены:</strong> ${sr.issues_summary || 'Без существенных отклонений'}
+          </div>
+
+          ${sr.kaizen_suggestions ? `
+            <div style="font-size:12px; color:#065f46; background:#ecfdf5; padding:6px 10px; border-radius:6px; margin-bottom:10px;">
+              <strong>💡 Kaizen:</strong> ${sr.kaizen_suggestions}
+            </div>
+          ` : ''}
+
+          ${sr.director_verdict ? `
+            <div style="font-size:12px; color:#1e293b; background:#f1f5f9; border-left:3px solid #0284c7; padding:6px 10px; border-radius:4px; margin-bottom:10px;">
+              <strong>👔 Резолюция Директора:</strong> ${sr.director_verdict}
+            </div>
+          ` : ''}
+
+          <div style="display:flex; gap:6px; margin-top:auto; padding-top:8px; border-top:1px solid #f1f5f9;">
+            ${sr.status === 'submitted' ? `
+              <button class="btn-compact-action" onclick="reviewShiftReportByHead('${sr.id}')">Визировать (Начальник)</button>
+            ` : ''}
+            ${sr.status !== 'approved_by_director' ? `
+              <button class="btn-compact-action" style="background:#0f172a; color:#fff;" onclick="approveShiftReportByDirector('${sr.id}')">Утвердить (Директор)</button>
+            ` : '<span style="font-size:11px; color:#10b981; font-weight:700;">✓ Утверждено руководством</span>'}
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    console.error("Error loading shift reports", err);
+  }
+}
+
+async function reviewShiftReportByHead(reportId) {
+  const comment = prompt("Введите служебную визу / комментарий начальника цеха:", "Смена отработала по нормам, замечаний нет.");
+  if (!comment) return;
+  try {
+    const res = await fetch(`/api/shift-reports/${reportId}/head-review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ head_comment: comment })
+    });
+    if (res.ok) {
+      alert("Рапорт завизирован");
+      loadShiftReports();
+    }
+  } catch (err) {
+    alert("Ошибка визирования");
+  }
+}
+
+async function approveShiftReportByDirector(reportId) {
+  const verdict = prompt("Введите резолюцию Генерального директора:", "Утверждаю. На следующей смене обеспечить буферный запас деталей.");
+  if (!verdict) return;
+  try {
+    const res = await fetch(`/api/shift-reports/${reportId}/director-approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ director_verdict: verdict })
+    });
+    if (res.ok) {
+      alert("Рапорт официально утверждён Генеральным директором завода!");
+      loadShiftReports();
+      loadExecutiveBI();
+    }
+  } catch (err) {
+    alert("Ошибка утверждения");
+  }
+}
+
+// ==================== EXECUTIVE BI DASHBOARD ====================
+
+async function loadExecutiveBI() {
+  try {
+    const res = await fetch("/api/executive/bi");
+    const data = await res.json();
+
+    // 1. Production Headline
+    const prod = data.total_production_number || {};
+    document.getElementById("bi-total-production").textContent = `${prod.fact || 0} шт.`;
+    document.getElementById("bi-prod-rate").textContent = `${prod.rate || 0}%`;
+    document.getElementById("bi-prod-plan-sub").textContent = `План: ${prod.plan || 0} комплектов сидений и узлов`;
+
+    // 2. Defect Rate
+    const def = data.total_defect_rate || {};
+    document.getElementById("bi-defect-rate").textContent = `${def.percent || 0}%`;
+    document.getElementById("bi-ppm-badge").textContent = `${def.ppm || 0} PPM`;
+    document.getElementById("bi-scrap-units-sub").textContent = `Всего ${def.total_scrap_units || 0} отбракованных узлов изолировано в Red Box`;
+
+    // 3. OEE
+    const oee = data.oee || {};
+    document.getElementById("bi-oee-val").textContent = `${oee.overall_oee || 0}%`;
+    document.getElementById("bi-oee-avail").textContent = `${oee.availability || 0}%`;
+    document.getElementById("bi-oee-perf").textContent = `${oee.performance || 0}%`;
+    document.getElementById("bi-oee-qual").textContent = `${oee.quality || 0}%`;
+
+    // 4. Financial Losses
+    const fin = data.financial_loss || {};
+    const lossUzsMil = (fin.total_loss_uzs / 1000000).toFixed(2);
+    const scrapUzsMil = (fin.scrap_cost_uzs / 1000000).toFixed(2);
+    const downUzsMil = (fin.downtime_cost_uzs / 1000000).toFixed(2);
+    document.getElementById("bi-total-loss").textContent = `${lossUzsMil} млн сум`;
+    document.getElementById("bi-loss-usd").textContent = `$${fin.total_loss_usd} USD`;
+
+    // 5. 30-Minute Escalation Alert Banner
+    const alertBox = document.getElementById("director-escalation-alert-box");
+    const escalated = data.escalated_critical_issues || [];
+    if (escalated.length > 0) {
+      const topEsc = escalated[0];
+      document.getElementById("escalation-banner-title").textContent = `🚨 КРИТИЧЕСКАЯ ЭСКАЛАЦИЯ ДИРЕКТОРУ: Простой линии более ${topEsc.downtime_minutes} минут!`;
+      document.getElementById("escalation-banner-desc").textContent = `Участок: ${topEsc.line_name}. Зависший отдел: ${topEsc.target_service === 'ws-mechanic' ? 'ОГМ / Ремонтники' : 'Служба обеспечения'}. Дефект: ${topEsc.defect_type}.`;
+      document.getElementById("escalation-banner-time").textContent = `Простой: ${topEsc.downtime_minutes} мин`;
+      alertBox.classList.remove("hidden");
+    } else {
+      alertBox.classList.add("hidden");
+    }
+
+    // 6. Bottlenecks Table
+    const tbody = document.getElementById("bi-bottlenecks-rows");
+    if (tbody) {
+      const bottlenecks = data.bottlenecks || [];
+      tbody.innerHTML = bottlenecks.map(b => {
+        const rate = b.plan > 0 ? ((b.fact / b.plan) * 100).toFixed(1) : 100;
+        return `
+          <tr>
+            <td><strong>${b.name_ru}</strong></td>
+            <td>${b.head_name}</td>
+            <td>${b.plan}</td>
+            <td><strong style="color:#0284c7;">${b.fact}</strong></td>
+            <td><span class="badge-tag ${rate >= 95 ? 'badge-green' : 'badge-gold'}">${rate}%</span></td>
+            <td><span class="badge-tag ${b.scrap > 3 ? 'badge-red' : 'badge-green'}">${b.scrap} шт</span></td>
+            <td><span class="badge-tag ${b.downtime > 20 ? 'badge-red' : (b.downtime > 0 ? 'badge-amber' : 'badge-green')}">${b.downtime} мин</span></td>
+            <td>${b.downtime > 20 ? '<span style="color:#ef4444; font-weight:700;">⚠️ Узкое место</span>' : '<span style="color:#10b981;">В норме</span>'}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+  } catch (err) {
+    console.error("Error loading executive BI", err);
+  }
+}
+
+// ==================== MASTER WORKSTATION ====================
+
+function loadMasterDashboard() {
+  const linesRows = document.getElementById("master-lines-progress-rows");
+  if (!linesRows) return;
+
+  const mockLines = [
+    { line: "Линия сборки Cobalt (Главный конвейер)", item: "Сиденья Chevrolet Cobalt", plan: 220, fact: 215, scrap: 1, downtime: 8, status: "В норме" },
+    { line: "Линия сборки Tracker", item: "Сиденья Chevrolet Tracker", plan: 140, fact: 138, scrap: 1, downtime: 4, status: "В норме" },
+    { line: "Линия сборки Onix", item: "Сиденья Chevrolet Onix", plan: 140, fact: 132, scrap: 1, downtime: 12, status: "Задержка деталей" },
+    { line: "Сварочный пост Cobalt #1", item: "Каркасы спинки Cobalt", plan: 240, fact: 236, scrap: 2, downtime: 10, status: "В норме" },
+    { line: "Штамповочный пресс Aida 800t", item: "Салазки и кронштейны", plan: 600, fact: 590, scrap: 3, downtime: 5, status: "В норме" }
+  ];
+
+  linesRows.innerHTML = mockLines.map(l => {
+    const rate = ((l.fact / l.plan) * 100).toFixed(1);
+    return `
+      <tr>
+        <td><strong>${l.line}</strong></td>
+        <td>${l.item}</td>
+        <td>${l.plan} шт</td>
+        <td><strong style="color:#0284c7;">${l.fact} шт</strong></td>
+        <td>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="flex:1; background:#e2e8f0; height:8px; border-radius:4px; overflow:hidden;">
+              <div style="width:${rate}%; background:#0284c7; height:100%;"></div>
+            </div>
+            <span style="font-size:12px; font-weight:700;">${rate}%</span>
+          </div>
+        </td>
+        <td><span class="badge-tag ${l.scrap > 1 ? 'badge-red' : 'badge-green'}">${l.scrap}</span></td>
+        <td><span class="badge-tag ${l.downtime > 10 ? 'badge-amber' : 'badge-green'}">${l.downtime} мин</span></td>
+        <td><span class="badge-tag ${l.status === 'В норме' ? 'badge-green' : 'badge-gold'}">${l.status}</span></td>
+      </tr>
+    `;
+  }).join("");
+}
+
+// ==================== OTK: INCOMING & RECLAMATIONS ====================
+
+function switchOtkSubTab(tab) {
+  document.getElementById("btn-otk-tab-incoming").classList.remove("active");
+  document.getElementById("btn-otk-tab-inprocess").classList.remove("active");
+  document.getElementById("btn-otk-tab-redbox").classList.remove("active");
+  document.getElementById(`btn-otk-tab-${tab}`).classList.add("active");
+
+  document.getElementById("otk-pane-incoming").classList.add("hidden");
+  document.getElementById("otk-pane-inprocess").classList.add("hidden");
+  document.getElementById("otk-pane-redbox").classList.add("hidden");
+  document.getElementById(`otk-pane-${tab}`).classList.remove("hidden");
+
+  if (tab === "incoming") loadIncomingInspections();
+  if (tab === "redbox") loadOtkRedBoxTable();
+}
+
+function openIncomingModal() {
+  document.getElementById("modal-incoming-inspection").classList.remove("hidden");
+}
+
+function setupIncomingInspectionHandler() {
+  const form = document.getElementById("form-incoming-inspection");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      material_name: document.getElementById("inc-mat-name").value,
+      supplier: document.getElementById("inc-supplier").value,
+      batch_number: document.getElementById("inc-batch").value,
+      sample_size: parseInt(document.getElementById("inc-sample").value) || 100,
+      defect_count: parseInt(document.getElementById("inc-defect").value) || 0,
+      verdict: document.getElementById("inc-verdict").value,
+      inspector_name: document.getElementById("inc-inspector").value || (currentUser ? currentUser.full_name : "Контролёр ОТК"),
+      comments: document.getElementById("inc-comments").value
+    };
+
+    try {
+      const res = await fetch("/api/quality/incoming", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        alert("✅ Акт входного контроля сырья зарегистрирован!");
+        closeModal("modal-incoming-inspection");
+        form.reset();
+        loadIncomingInspections();
+      }
+    } catch (err) {
+      alert("Ошибка сохранения");
+    }
+  });
+}
+
+async function loadIncomingInspections() {
+  const tbody = document.getElementById("incoming-inspection-rows");
+  if (!tbody) return;
+  try {
+    const res = await fetch("/api/quality/incoming");
+    const data = await res.json();
+    const rows = data.incoming || [];
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.date}</td>
+        <td><strong>${r.material_name}</strong></td>
+        <td>${r.supplier}</td>
+        <td><code>${r.batch_number}</code></td>
+        <td>${r.sample_size} шт</td>
+        <td>${r.defect_count > 0 ? `<span class="badge-tag badge-red">${r.defect_count}</span>` : '0'}</td>
+        <td>${r.certificate_valid ? '✅ В норме' : '❌ Нет'}</td>
+        <td>
+          <span class="badge-tag ${r.verdict === 'accepted' ? 'badge-green' : (r.verdict === 'quarantine' ? 'badge-gold' : 'badge-red')}">
+            ${r.verdict === 'accepted' ? 'Годен' : (r.verdict === 'quarantine' ? 'Карантин' : 'Брак')}
+          </span>
+        </td>
+        <td>${r.inspector_name}</td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error("Error loading incoming inspections", err);
+  }
+}
+
+// Engineer Subtabs
+function switchEngSubTab(tab) {
+  document.getElementById("btn-eng-tab-stats").classList.remove("active");
+  document.getElementById("btn-eng-tab-reclamations").classList.remove("active");
+  document.getElementById("btn-eng-tab-iso").classList.remove("active");
+  document.getElementById("btn-eng-tab-report").classList.remove("active");
+  document.getElementById(`btn-eng-tab-${tab}`).classList.add("active");
+
+  document.getElementById("eng-pane-stats").classList.add("hidden");
+  document.getElementById("eng-pane-reclamations").classList.add("hidden");
+  document.getElementById("eng-pane-iso").classList.add("hidden");
+  document.getElementById("eng-pane-report").classList.add("hidden");
+  document.getElementById(`eng-pane-${tab}`).classList.remove("hidden");
+
+  if (tab === "stats") renderQualityCharts();
+  if (tab === "reclamations") loadReclamations();
+  if (tab === "iso") loadAudits();
+  if (tab === "report") loadDailyQualityTasks();
+}
+
+function openNewReclamationModal() {
+  document.getElementById("modal-reclamation").classList.remove("hidden");
+}
+
+function setupReclamationHandler() {
+  const form = document.getElementById("form-reclamation");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      customer: document.getElementById("rec-customer").value,
+      car_model: document.getElementById("rec-carmodel").value,
+      part_number: document.getElementById("rec-partno").value,
+      defect_description: document.getElementById("rec-desc").value,
+      severity: document.getElementById("rec-severity").value,
+      root_cause_analysis: document.getElementById("rec-rootcause").value,
+      corrective_action: document.getElementById("rec-corrective").value,
+      engineer_name: currentUser ? currentUser.full_name : "Инженер по качеству"
+    };
+
+    try {
+      const res = await fetch("/api/quality/reclamations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("✅ Рекламация " + data.ticket_num + " внесена в систему 8D!");
+        closeModal("modal-reclamation");
+        form.reset();
+        loadReclamations();
+      }
+    } catch (err) {
+      alert("Ошибка сохранения рекламации");
+    }
+  });
+}
+
+async function loadReclamations() {
+  const tbody = document.getElementById("reclamations-rows");
+  if (!tbody) return;
+  try {
+    const res = await fetch("/api/quality/reclamations");
+    const data = await res.json();
+    const rows = data.reclamations || [];
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td><strong>${r.ticket_num}</strong></td>
+        <td>${r.date}</td>
+        <td>${r.customer}</td>
+        <td><span class="badge-tag badge-blue">${r.car_model}</span></td>
+        <td><code>${r.part_number}</code></td>
+        <td>${r.defect_description}</td>
+        <td>${r.root_cause_analysis || '--'}</td>
+        <td>${r.corrective_action || '--'}</td>
+        <td>
+          <span class="badge-tag ${r.status === 'closed' ? 'badge-green' : 'badge-gold'}">
+            ${r.status === 'closed' ? 'Закрыта' : 'В расследовании 8D'}
+          </span>
+        </td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error("Error loading reclamations", err);
+  }
+}
+
+function renderQualityCharts() {
+  const ctxDef = document.getElementById("chartDefectTypes");
+  if (ctxDef) {
+    if (chartDefectsInstance) chartDefectsInstance.destroy();
+    chartDefectsInstance = new Chart(ctxDef, {
+      type: "doughnut",
+      data: {
+        labels: ["Момент затяжки болтов", "Сварные швы / поры", "Симметрия строчки чехлов", "Плотность пены ППУ", "Царапины пластика"],
+        datasets: [{
+          data: [35, 25, 20, 12, 8],
+          backgroundColor: ["#0284c7", "#ef4444", "#f59e0b", "#10b981", "#8b5cf6"]
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+  }
+
+  const ctxScrap = document.getElementById("chartScrapByDept");
+  if (ctxScrap) {
+    if (chartScrapDeptInstance) chartScrapDeptInstance.destroy();
+    chartScrapDeptInstance = new Chart(ctxScrap, {
+      type: "bar",
+      data: {
+        labels: ["Сборка", "Сварка", "Штамповка", "ППУ", "Пошив"],
+        datasets: [{
+          label: "Процент брака (%)",
+          data: [0.62, 0.45, 0.42, 0.38, 0.55],
+          backgroundColor: "#0284c7"
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+  }
+}
+
+// ==================== ENERGY (ОГЭ) & FACILITY (АХО) ====================
+
+async function loadEnergyStatus() {
+  try {
+    const res = await fetch("/api/energy/status");
+    const data = await res.json();
+    const en = data.energy || {};
+    document.getElementById("oge-elec-val").textContent = `${en.electricity_kwh || 3420} кВт·ч`;
+    document.getElementById("oge-gas-val").textContent = `${en.gas_m3 || 185} м³`;
+    document.getElementById("oge-water-val").textContent = `${en.water_m3 || 42} м³`;
+    document.getElementById("oge-air-val").textContent = `${en.air_pressure_bar || 6.9} бар`;
+  } catch (err) {
+    console.error("Error loading energy status", err);
+  }
+}
+
+function setupEnergyHandlers() {
+  const formRec = document.getElementById("form-energy-record");
+  if (formRec) {
+    formRec.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const payload = {
+        electricity_kwh: parseFloat(document.getElementById("inp-oge-elec").value) || 0,
+        gas_m3: parseFloat(document.getElementById("inp-oge-gas").value) || 0,
+        water_m3: parseFloat(document.getElementById("inp-oge-water").value) || 0,
+        air_pressure_bar: parseFloat(document.getElementById("inp-oge-air").value) || 6.8
+      };
+      const res = await fetch("/api/energy/record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        alert("✅ Показания счетчиков сохранены в системе!");
+        loadEnergyStatus();
+      }
+    });
+  }
+
+  const formAlert = document.getElementById("form-energy-alert");
+  if (formAlert) {
+    formAlert.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = document.getElementById("alert-oge-desc").value;
+      const res = await fetch("/api/energy/alert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emergency_text: text })
+      });
+      if (res.ok) {
+        alert("🚨 АВАРИЙНЫЙ СИГНАЛ ОГЭ РАЗОСЛАН ПО ВСЕМУ ЗАВОДУ!");
+        closeModal("modal-energy-alert");
+        loadAndonFeed();
+      }
+    });
+  }
+}
+
+function openEnergyAlertModal() {
+  document.getElementById("modal-energy-alert").classList.remove("hidden");
+}
+
+function openFacilityChecklistModal() {
+  document.getElementById("modal-facility-chk").classList.remove("hidden");
+}
+
+function setupFacilityHandler() {
+  const form = document.getElementById("form-facility-chk");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      cleanliness_ok: document.getElementById("fac-clean").checked ? 1 : 0,
+      canteen_ok: document.getElementById("fac-canteen").checked ? 1 : 0,
+      security_ok: document.getElementById("fac-security").checked ? 1 : 0,
+      waste_disposal_ok: document.getElementById("fac-waste").checked ? 1 : 0,
+      open_requests: parseInt(document.getElementById("fac-open-req").value) || 0,
+      closed_requests: parseInt(document.getElementById("fac-closed-req").value) || 0,
+      report_text: document.getElementById("fac-notes").value
+    };
+
+    const res = await fetch("/api/facility/checklists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      alert("✅ Чек-лист АХО успешно сохранен!");
+      closeModal("modal-facility-chk");
+      loadFacilityChecklists();
+    }
+  });
+}
+
+async function loadFacilityChecklists() {
+  const tbody = document.getElementById("facility-checklists-rows");
+  if (!tbody) return;
+  try {
+    const res = await fetch("/api/facility/checklists");
+    const data = await res.json();
+    const rows = data.checklists || [];
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.date}</td>
+        <td><strong>${r.inspector_name}</strong></td>
+        <td>${r.cleanliness_ok ? '✅ 100%' : '❌ Замечания'}</td>
+        <td>${r.canteen_ok ? '✅ Норма' : '❌ Нарушение'}</td>
+        <td>${r.security_ok ? '✅ Без сбоев' : '❌ Инцидент'}</td>
+        <td>${r.waste_disposal_ok ? '✅ Вывезено' : '❌ Накопление'}</td>
+        <td><span class="badge-tag badge-green">${r.closed_requests} решено</span> / ${r.open_requests} открыто</td>
+        <td>${r.report_text}</td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error("Error loading facility checklists", err);
+  }
+}
+
+// ==================== QUALITY DAILY TASKS & BIQS AUDITS ====================
+
+function openCreateQualityTaskModal() {
+  const todayStr = new Date().toISOString().split("T")[0];
+  document.getElementById("new-quality-date").value = todayStr;
+  document.getElementById("modal-create-quality-task").classList.remove("hidden");
+}
+
+function setupQualityDailyTaskHandlers() {
+  const form = document.getElementById("form-create-quality-task");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      plan_date: document.getElementById("new-quality-date").value,
+      target_role: document.getElementById("new-task-target-role").value,
+      priority: document.getElementById("new-quality-priority").value,
+      department_id: document.getElementById("new-quality-dept").value,
+      line_name: document.getElementById("new-quality-line").value,
+      title: document.getElementById("new-quality-title").value,
+      description: document.getElementById("new-quality-desc").value
+    };
+
+    const res = await fetch("/api/quality/daily-tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      alert("✅ Задание качества успешно зарегистрировано в плане смены!");
+      closeModal("modal-create-quality-task");
+      loadDailyQualityTasks();
+    }
+  });
+}
+
+async function loadDailyQualityTasks() {
+  const dateInp = document.getElementById("quality-plan-date-input");
+  const reqDate = dateInp && dateInp.value ? dateInp.value : new Date().toISOString().split("T")[0];
+  if (dateInp && !dateInp.value) dateInp.value = reqDate;
+
+  try {
+    const res = await fetch(`/api/quality/daily-tasks?date=${reqDate}`);
+    const data = await res.json();
+    const engContainer = document.getElementById("engineers-tasks-container");
+    const ctrlContainer = document.getElementById("controllers-tasks-container");
+
+    if (engContainer) {
+      const engTasks = data.engineer_tasks || [];
+      engContainer.innerHTML = engTasks.map(t => renderTaskCard(t, "engineer")).join("") || '<p style="color:#64748b;">Нет инженерных заданий на выбранную дату</p>';
+    }
+
+    if (ctrlContainer) {
+      const ctrlTasks = data.controller_tasks || [];
+      ctrlContainer.innerHTML = ctrlTasks.map(t => renderTaskCard(t, "controller")).join("") || '<p style="color:#64748b;">Нет заданий контролёров на выбранную дату</p>';
+    }
+
+    // Evening report
+    const repBox = document.getElementById("evening-report-content");
+    const engRepBox = document.getElementById("eng-evening-report-box");
+    const rep = data.daily_report;
+    const reportHtml = rep ? `
+      <div style="padding:16px;">
+        <h3 style="font-size:16px; font-weight:800; color:#0f172a; margin-bottom:8px;">Итоговый суточный рапорт службы качества за ${reqDate}</h3>
+        <p style="font-size:13px; color:#475569; line-height:1.5;">${rep.summary_conclusion || 'Все сборочные посты отработали смену под контролем ОТК.'}</p>
+        ${rep.director_verdict ? `
+          <div style="margin-top:14px; background:#f1f5f9; border-left:4px solid #10b981; padding:10px 14px; border-radius:6px;">
+            <strong>Резолюция Генерального директора:</strong> ${rep.director_verdict}
+          </div>
+        ` : ''}
+      </div>
+    ` : '<p style="color:#64748b; padding:16px;">Суточный рапорт формируется в конце вечерней смены.</p>';
+
+    if (repBox) repBox.innerHTML = reportHtml;
+    if (engRepBox) engRepBox.innerHTML = reportHtml;
+
+  } catch (err) {
+    console.error("Error loading daily quality tasks", err);
+  }
+}
+
+function renderTaskCard(t, roleType) {
+  return `
+    <div class="quality-task-card ${roleType === 'engineer' ? 'card-engineer' : 'card-controller'}">
+      <div class="task-card-header">
+        <span class="task-card-tag badge-${t.priority}">${t.priority === 'critical' ? '🚨 Критический' : '⚡ Высокий'}</span>
+        <span class="badge-tag ${t.status === 'completed' ? 'badge-green' : 'badge-gold'}">
+          ${t.status === 'completed' ? 'Выполнено' : 'В работе'}
+        </span>
+      </div>
+      <div class="task-card-title">${t.title}</div>
+      <div class="task-card-meta"><i class="fa-solid fa-industry"></i> ${t.line_name}</div>
+      <div class="task-card-desc">${t.description}</div>
+      <div class="task-actions-row">
+        <span style="font-size:11px; color:#64748b;">Проверено: <strong>${t.units_checked || 0} шт</strong></span>
+        ${t.defects_prevented > 0 ? `<span style="font-size:11px; color:#10b981; font-weight:700;">Предотвращено брака: ${t.defects_prevented}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function switchQualityTab(tab) {
+  document.getElementById("tab-btn-engineers").classList.remove("active");
+  document.getElementById("tab-btn-controllers").classList.remove("active");
+  document.getElementById("tab-btn-report").classList.remove("active");
+  document.getElementById(`tab-btn-${tab}`).classList.add("active");
+
+  document.getElementById("quality-subtab-engineers").classList.add("hidden");
+  document.getElementById("quality-subtab-controllers").classList.add("hidden");
+  document.getElementById("quality-subtab-report").classList.add("hidden");
+  document.getElementById(`quality-subtab-${tab}`).classList.remove("hidden");
+}
+
+// BIQS Audits Walkthrough
+function openNewAuditModal() {
+  const container = document.getElementById("audit-questions-container");
+  if (container) {
+    container.innerHTML = BIQS_STANDARD_QUESTIONS.map((q, idx) => `
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin-bottom:8px;">
+        <div style="font-size:11px; font-weight:800; color:#0284c7; text-transform:uppercase;">${q.section}</div>
+        <div style="font-size:13px; font-weight:600; color:#0f172a; margin:4px 0 8px 0;">${q.question_ru}</div>
+        <div style="display:flex; gap:16px;">
+          <label style="font-size:12px; font-weight:700; color:#10b981; cursor:pointer;">
+            <input type="radio" name="audit-q-${idx}" value="yes" checked> Да (Соблюдается)
+          </label>
+          <label style="font-size:12px; font-weight:700; color:#ef4444; cursor:pointer;">
+            <input type="radio" name="audit-q-${idx}" value="no"> Нет (Отклонение)
+          </label>
+        </div>
+      </div>
+    `).join("");
+  }
+  document.getElementById("modal-biqs-audit").classList.remove("hidden");
+}
+
+function setupBiqsAuditHandler() {
+  const form = document.getElementById("form-create-audit");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      department_id: document.getElementById("audit-dept-select").value,
+      line_name: document.getElementById("audit-line-input").value,
+      auditor_name: document.getElementById("audit-auditor-name").value,
+      worker_name: document.getElementById("audit-worker-name").value,
+      worker_knowledge_status: "Знает и соблюдает стандарт SOS",
+      compliance_score: 96.5,
+      questions: BIQS_STANDARD_QUESTIONS.map(q => ({ section: q.section, question: q.question_ru, result: "pass" })),
+      comments: "Обход завершен. Стандарты GM BIQS соблюдаются."
+    };
+
+    const res = await fetch("/api/audits/biqs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      alert("✅ Аудит BIQS успешно зафиксирован в единой базе завода!");
+      closeModal("modal-biqs-audit");
+      loadAudits();
+    }
+  });
+}
+
+async function loadAudits() {
+  const container = document.getElementById("audits-list-container");
+  const engAudits = document.getElementById("eng-audits-list");
+  try {
+    const res = await fetch("/api/audits/biqs");
+    const data = await res.json();
+    const rows = data.audits || [];
+
+    const html = rows.map(a => `
+      <div class="card" style="border-left:4px solid #10b981; margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div>
+            <h4 style="font-size:14px; font-weight:800; color:#0f172a;">${a.line_name}</h4>
+            <div style="font-size:12px; color:#64748b;">Аудитор: ${a.auditor_name} | Оператор: ${a.worker_name}</div>
+          </div>
+          <span class="badge-tag badge-green" style="font-size:13px; font-weight:800;">${a.compliance_score}% BIQS</span>
+        </div>
+        <p style="font-size:12px; color:#475569; margin-top:8px;">${a.comments || 'Замечаний не выявлено'}</p>
+      </div>
+    `).join("") || '<p style="color:#64748b;">Аудитов пока нет</p>';
+
+    if (container) container.innerHTML = html;
+    if (engAudits) engAudits.innerHTML = html;
+  } catch (err) {
+    console.error("Error loading audits", err);
+  }
+}
+
+// ==================== ADMIN PANEL LOGIC ====================
+
+function switchAdminSubTab(tab) {
+  document.getElementById("admin-tab-btn-keys").classList.remove("active");
+  document.getElementById("admin-tab-btn-lines").classList.remove("active");
+  document.getElementById("admin-tab-btn-users").classList.remove("active");
+  document.getElementById("admin-tab-btn-logs").classList.remove("active");
+  document.getElementById(`admin-tab-btn-${tab}`).classList.add("active");
+
+  document.getElementById("admin-subtab-keys").classList.add("hidden");
+  document.getElementById("admin-subtab-lines").classList.add("hidden");
+  document.getElementById("admin-subtab-users").classList.add("hidden");
+  document.getElementById("admin-subtab-logs").classList.add("hidden");
+  document.getElementById(`admin-subtab-${tab}`).classList.remove("hidden");
+
+  if (tab === "keys") loadAdminKeys();
+  if (tab === "lines") loadAdminLines();
+  if (tab === "users") loadAdminUsers();
+  if (tab === "logs") loadAdminLogs();
+}
+
+function openCreateKeyModal() {
+  document.getElementById("modal-create-key").classList.remove("hidden");
+}
+
+function setupAdminHandlers() {
+  const formKey = document.getElementById("form-create-key");
+  if (formKey) {
+    formKey.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const payload = {
+        role: document.getElementById("key-role-select").value,
+        department_id: document.getElementById("key-dept-select").value,
+        max_uses: 25,
+        note: document.getElementById("key-note").value
+      };
+      const res = await fetch("/api/admin/invite-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("✅ Инвайт-код сгенерирован: " + data.key_code);
+        closeModal("modal-create-key");
+        loadAdminKeys();
+      }
+    });
+  }
+}
+
+async function loadAdminKeys() {
+  const tbody = document.getElementById("invite-keys-rows");
+  if (!tbody) return;
+  try {
+    const res = await fetch("/api/admin/invite-keys");
+    const data = await res.json();
+    const keys = data.keys || [];
+    tbody.innerHTML = keys.map(k => `
+      <tr>
+        <td><code>${k.key_code}</code></td>
+        <td>${getRoleDisplayName(k.role)}</td>
+        <td>${k.dept_name_ru || k.department_id}</td>
+        <td>${k.used_count} / ${k.max_uses}</td>
+        <td><span class="badge-tag ${k.is_active ? 'badge-green' : 'badge-red'}">${k.is_active ? 'Активен' : 'Отключен'}</span></td>
+        <td>${k.note || '--'}</td>
+        <td>
+          <button class="btn-compact-tool" onclick="toggleKey('${k.id}')">${k.is_active ? 'Отключить' : 'Включить'}</button>
+        </td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error("Error loading admin keys", err);
+  }
+}
+
+async function toggleKey(keyId) {
+  await fetch(`/api/admin/invite-keys/${keyId}/toggle`, { method: "POST" });
+  loadAdminKeys();
+}
+
+async function loadAdminLines() {
+  const tbody = document.getElementById("admin-lines-rows");
+  if (!tbody) return;
+  tbody.innerHTML = allAssemblyLines.map(l => `
+    <tr>
+      <td>${l.dept_code || l.department_id}</td>
+      <td><strong>${l.name}</strong></td>
+      <td>${l.description || '--'}</td>
+      <td><span class="badge-tag badge-green">Активна</span></td>
+    </tr>
+  `).join("");
+}
+
+async function loadAdminUsers() {
+  const tbody = document.getElementById("admin-users-rows");
+  if (!tbody) return;
+  try {
+    const res = await fetch("/api/admin/users");
+    const data = await res.json();
+    const users = data.users || [];
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td><code>${u.username}</code></td>
+        <td>${u.full_name}</td>
+        <td>${getRoleDisplayName(u.role)}</td>
+        <td>${u.dept_name_ru || u.department_id}</td>
+        <td><span class="badge-tag ${u.is_active ? 'badge-green' : 'badge-red'}">${u.is_active ? 'Активен' : 'Блок'}</span></td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error("Error loading admin users", err);
+  }
+}
+
+async function loadAdminLogs() {
+  const tbody = document.getElementById("admin-logs-rows");
+  if (!tbody) return;
+  try {
+    const res = await fetch("/api/admin/logs");
+    const data = await res.json();
+    const logs = data.logs || [];
+    tbody.innerHTML = logs.map(l => `
+      <tr>
+        <td style="font-size:11px;">${l.created_at ? l.created_at.slice(0, 16) : ''}</td>
+        <td>${l.username}</td>
+        <td><strong>${l.action}</strong></td>
+        <td style="font-size:12px;">${l.detail}</td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error("Error loading admin logs", err);
+  }
+}
+
+// ==================== MODAL HELPERS ====================
 
 function closeModal(modalId) {
-  document.getElementById(modalId).classList.add("hidden");
+  const modal = document.getElementById(modalId);
+  if (modal) modal.classList.add("hidden");
 }
 
-function updateDynamicTexts() {
-  if (currentUser) {
-    const roleDisplayNames = {
-      admin: "Главный Администратор",
-      director: t("roleDirector"),
-      shop_head: t("roleShopHead"),
-      operator: t("roleOperator"),
-      auditor: t("roleAuditor"),
-      user: t("roleUser")
-    };
-    document.getElementById("user-display-role").textContent = roleDisplayNames[currentUser.role] || currentUser.role;
-    setupDepartmentIsolation();
+window.onclick = function(event) {
+  if (event.target.classList && event.target.classList.contains("modal-overlay")) {
+    event.target.classList.add("hidden");
   }
-  loadDepartments();
-}
+};
