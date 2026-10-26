@@ -1,5 +1,16 @@
 // ===== INDUSTRIAL DIGITAL MANUFACTURING PLATFORM JS (JV UZ-TONG HONG CO.) =====
 
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 let currentUser = null;
 let currentSimulatedRole = null;
 let allDepartments = [];
@@ -1005,40 +1016,74 @@ async function loadExecutiveBI() {
 
 // ==================== MASTER WORKSTATION ====================
 
-function loadMasterDashboard() {
+async function loadMasterDashboard(selectedDept) {
   const linesRows = document.getElementById("master-lines-progress-rows");
   if (!linesRows) return;
 
-  const mockLines = [
-    { line: "Линия сборки Cobalt (Главный конвейер)", item: "Сиденья Chevrolet Cobalt", plan: 220, fact: 215, scrap: 1, downtime: 8, status: "В норме" },
-    { line: "Линия сборки Tracker", item: "Сиденья Chevrolet Tracker", plan: 140, fact: 138, scrap: 1, downtime: 4, status: "В норме" },
-    { line: "Линия сборки Onix", item: "Сиденья Chevrolet Onix", plan: 140, fact: 132, scrap: 1, downtime: 12, status: "Задержка деталей" },
-    { line: "Сварочный пост Cobalt #1", item: "Каркасы спинки Cobalt", plan: 240, fact: 236, scrap: 2, downtime: 10, status: "В норме" },
-    { line: "Штамповочный пресс Aida 800t", item: "Салазки и кронштейны", plan: 600, fact: 590, scrap: 3, downtime: 5, status: "В норме" }
-  ];
+  const filterEl = document.getElementById("master-dept-filter");
+  let targetDept = selectedDept;
+  if (!targetDept) {
+    if (filterEl && filterEl.value) {
+      targetDept = filterEl.value;
+    } else if (currentUser && currentUser.department_id && currentUser.department_id !== 'all') {
+      targetDept = currentUser.department_id;
+    } else {
+      targetDept = 'ws-assembly';
+    }
+  }
 
-  linesRows.innerHTML = mockLines.map(l => {
-    const rate = ((l.fact / l.plan) * 100).toFixed(1);
-    return `
-      <tr>
-        <td><strong>${l.line}</strong></td>
-        <td>${l.item}</td>
-        <td>${l.plan} шт</td>
-        <td><strong style="color:#0284c7;">${l.fact} шт</strong></td>
-        <td>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <div style="flex:1; background:#e2e8f0; height:8px; border-radius:4px; overflow:hidden;">
-              <div style="width:${rate}%; background:#0284c7; height:100%;"></div>
+  if (filterEl && filterEl.value !== targetDept) {
+    filterEl.value = targetDept;
+  }
+
+  try {
+    const res = await fetch(`/api/master/dashboard?department_id=${encodeURIComponent(targetDept)}`);
+    if (!res.ok) throw new Error("Failed to load master dashboard");
+    const data = await res.json();
+
+    const sum = data.summary || {};
+    const planEl = document.getElementById("master-plan-val");
+    if (planEl) planEl.textContent = `${sum.total_plan || 0} шт`;
+    const factEl = document.getElementById("master-fact-val");
+    if (factEl) factEl.textContent = `${sum.total_fact || 0} шт`;
+    const scrapEl = document.getElementById("master-scrap-val");
+    if (scrapEl) scrapEl.textContent = `${sum.total_scrap || 0} шт`;
+    const downEl = document.getElementById("master-downtime-val");
+    if (downEl) downEl.textContent = `${sum.total_downtime || 0} мин`;
+
+    const lines = data.lines || [];
+    if (lines.length === 0) {
+      linesRows.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:24px; color:#64748b;">В данном цеху нет зарегистрированных активных линий</td></tr>`;
+      return;
+    }
+
+    linesRows.innerHTML = lines.map(l => {
+      const rate = l.rate != null ? l.rate : (l.plan > 0 ? ((l.fact / l.plan) * 100).toFixed(1) : 0);
+      const isNorm = l.status === "В норме";
+      return `
+        <tr>
+          <td><strong>${escapeHtml(l.line_name)}</strong></td>
+          <td>${escapeHtml(l.description)}</td>
+          <td>${l.plan} шт</td>
+          <td><strong style="color:var(--primary-blue, #0284c7);">${l.fact} шт</strong></td>
+          <td>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div style="flex:1; background:#e2e8f0; height:8px; border-radius:4px; overflow:hidden;">
+                <div style="width:${Math.min(rate, 100)}%; background:${rate >= 90 ? '#10b981' : rate >= 50 ? '#0284c7' : '#f59e0b'}; height:100%;"></div>
+              </div>
+              <span style="font-size:12px; font-weight:700;">${rate}%</span>
             </div>
-            <span style="font-size:12px; font-weight:700;">${rate}%</span>
-          </div>
-        </td>
-        <td><span class="badge-tag ${l.scrap > 1 ? 'badge-red' : 'badge-green'}">${l.scrap}</span></td>
-        <td><span class="badge-tag ${l.downtime > 10 ? 'badge-amber' : 'badge-green'}">${l.downtime} мин</span></td>
-        <td><span class="badge-tag ${l.status === 'В норме' ? 'badge-green' : 'badge-gold'}">${l.status}</span></td>
-      </tr>
-    `;
-  }).join("");
+          </td>
+          <td><span class="badge-tag ${l.scrap > 0 ? 'badge-red' : 'badge-green'}">${l.scrap} шт</span></td>
+          <td><span class="badge-tag ${l.downtime > 0 ? 'badge-amber' : 'badge-green'}">${l.downtime} мин</span></td>
+          <td><span class="badge-tag ${isNorm ? 'badge-green' : 'badge-gold'}">${escapeHtml(l.status)}</span></td>
+        </tr>
+      `;
+    }).join("");
+
+  } catch (err) {
+    console.error("Error loading master dashboard", err);
+  }
 }
 
 // ==================== OTK: INCOMING & RECLAMATIONS ====================

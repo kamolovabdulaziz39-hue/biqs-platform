@@ -10,8 +10,8 @@ import sqlite3
 import threading
 import urllib.request
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timedelta
-from fastapi import FastAPI, Request, HTTPException, Depends, Header, Response, Cookie, UploadFile, File
+from datetime import datetime
+from fastapi import FastAPI, Request, HTTPException, Depends, Header, Response, Cookie
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
@@ -23,16 +23,6 @@ DB_FILE = 'utong_factory.db'
 UPLOAD_DIR = 'static/uploads'
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs('static', exist_ok=True)
-
-def get_local_ip() -> str:
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        return "127.0.0.1"
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
@@ -70,7 +60,7 @@ def init_db():
         description_ru TEXT,
         description_uz TEXT,
         compliance_score REAL DEFAULT 95.0,
-        status TEXT DEFAULT 'Активен'
+        status TEXT DEFAULT 'В норме'
     );
     """)
 
@@ -88,24 +78,23 @@ def init_db():
     );
     """)
 
-    cursor.execute("PRAGMA table_info(users);")
-    user_cols = [row[1] for row in cursor.fetchall()]
-    if 'assigned_lines' not in user_cols:
-        cursor.execute("ALTER TABLE users ADD COLUMN assigned_lines TEXT DEFAULT '';")
-    if 'is_active' not in user_cols:
-        cursor.execute("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1;")
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS assembly_lines (
         id TEXT PRIMARY KEY,
         department_id TEXT NOT NULL,
         name TEXT NOT NULL,
         description TEXT,
+        target_pace_shift INTEGER DEFAULT 200,
         is_active INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(department_id) REFERENCES departments(id)
     );
     """)
+
+    cursor.execute("PRAGMA table_info(assembly_lines);")
+    al_cols = [r[1] for r in cursor.fetchall()]
+    if 'target_pace_shift' not in al_cols:
+        cursor.execute("ALTER TABLE assembly_lines ADD COLUMN target_pace_shift INTEGER DEFAULT 200;")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS invite_keys (
@@ -114,7 +103,7 @@ def init_db():
         role TEXT NOT NULL,
         department_id TEXT NOT NULL,
         created_by TEXT NOT NULL,
-        max_uses INTEGER DEFAULT 10,
+        max_uses INTEGER DEFAULT 50,
         used_count INTEGER DEFAULT 0,
         is_active INTEGER DEFAULT 1,
         note TEXT,
@@ -140,14 +129,13 @@ def init_db():
         reporter_name TEXT,
         downtime_minutes INTEGER DEFAULT 0,
         error_code TEXT DEFAULT '',
-        target_service TEXT DEFAULT '',
+        target_service TEXT DEFAULT 'ws-mechanic',
         mechanic_notes TEXT DEFAULT '',
         mechanic_name TEXT DEFAULT '',
         unlocked_by_controller INTEGER DEFAULT 0,
         controller_name TEXT DEFAULT '',
         controller_notes TEXT DEFAULT '',
         escalated_to_director INTEGER DEFAULT 0,
-        escalation_deadline TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         assigned_at TIMESTAMP,
         resolved_at TIMESTAMP,
@@ -155,24 +143,6 @@ def init_db():
         FOREIGN KEY(department_id) REFERENCES departments(id)
     );
     """)
-
-    cursor.execute("PRAGMA table_info(line_issues);")
-    issue_cols = [row[1] for row in cursor.fetchall()]
-    for col_name, col_def in [
-        ('reporter_name', 'TEXT'),
-        ('downtime_minutes', 'INTEGER DEFAULT 0'),
-        ('error_code', 'TEXT DEFAULT ""'),
-        ('target_service', 'TEXT DEFAULT ""'),
-        ('mechanic_notes', 'TEXT DEFAULT ""'),
-        ('mechanic_name', 'TEXT DEFAULT ""'),
-        ('unlocked_by_controller', 'INTEGER DEFAULT 0'),
-        ('controller_name', 'TEXT DEFAULT ""'),
-        ('controller_notes', 'TEXT DEFAULT ""'),
-        ('escalated_to_director', 'INTEGER DEFAULT 0'),
-        ('escalation_deadline', 'TIMESTAMP')
-    ]:
-        if col_name not in issue_cols:
-            cursor.execute(f"ALTER TABLE line_issues ADD COLUMN {col_name} {col_def};")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS biqs_audits (
@@ -188,16 +158,6 @@ def init_db():
         comments TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(department_id) REFERENCES departments(id)
-    );
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS cobalt_metrics (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        assembly_pace INTEGER NOT NULL,
-        target_pace INTEGER NOT NULL,
-        status TEXT NOT NULL
     );
     """)
 
@@ -259,7 +219,6 @@ def init_db():
     );
     """)
 
-    # 1. New Table: Shift Reports (Сменные цифровые рапорты цехов и отделов)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS shift_reports (
         id TEXT PRIMARY KEY,
@@ -289,7 +248,6 @@ def init_db():
     );
     """)
 
-    # 2. New Table: Worker Shift Inputs (Форма ввода данных рабочего)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS worker_shift_inputs (
         id TEXT PRIMARY KEY,
@@ -308,7 +266,6 @@ def init_db():
     );
     """)
 
-    # 3. New Table: Incoming Inspections (Входной контроль сырья/металла/химии для контролёров)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS incoming_inspections (
         id TEXT PRIMARY KEY,
@@ -326,7 +283,6 @@ def init_db():
     );
     """)
 
-    # 4. New Table: Reclamations (Рекламации с автозавода для инженеров по качеству)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS reclamations (
         id TEXT PRIMARY KEY,
@@ -345,7 +301,6 @@ def init_db():
     );
     """)
 
-    # 5. New Table: Energy Metrics (Отдел главного энергетика ОГЭ)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS energy_metrics (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -360,7 +315,6 @@ def init_db():
     );
     """)
 
-    # 6. New Table: Facility Checklists (Административно-хозяйственный отдел АХО)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS facility_checklists (
         id TEXT PRIMARY KEY,
@@ -377,7 +331,7 @@ def init_db():
     );
     """)
 
-    # Ensure all departments are populated
+    # Populate 9 real production & service departments
     departments_data = [
         ('ws-assembly', 'WS-01', 'Сборочный цех автомобильных сидений', 'Avtomobil oʻrindiqlarini yigʻish sexi', 'Азизов Карим', 'Начальник сборочного производства', 'Главный конвейер сборки автокресел Cobalt, Tracker, Onix. Контроль геометрии и момента затяжки.', 'Cobalt, Tracker, Onix oʻrindiqlarini yigʻish bosh konveyeri.', 96.8, 'В норме'),
         ('ws-welding', 'WS-02', 'Цех металлокаркасов и роботизированной сварки', 'Metall karkaslar va payvandlash sexi', 'Рахимов Шерзод', 'Главный сварщик завода', 'Автоматические сварочные комплексы, проверка прочности сварных швов и штампованных элементов.', 'Avtomatik payvandlash majmualari.', 94.2, 'Высокий стандарт'),
@@ -404,46 +358,42 @@ def init_db():
 
     # Assembly Lines
     lines_data = [
-        ('line-cobalt', 'ws-assembly', 'Линия сборки Cobalt (Главный конвейер)', 'Сборка сидений Chevrolet Cobalt'),
-        ('line-tracker', 'ws-assembly', 'Линия сборки Tracker', 'Сборка автокресел Chevrolet Tracker'),
-        ('line-onix', 'ws-assembly', 'Линия сборки Onix', 'Сборка автокресел Chevrolet Onix'),
-        ('line-weld-cobalt', 'ws-welding', 'Сварочный пост Cobalt #1', 'Роботизированная сварка каркасов Cobalt'),
-        ('line-weld-tracker', 'ws-welding', 'Сварочный пост Tracker', 'Роботизированная сварка каркасов Tracker'),
-        ('line-stamp-press1', 'ws-stamping', 'Штамповочный пресс Aida 800t', 'Вырубка и гибка силовых каркасов сидений'),
-        ('line-stamp-press2', 'ws-stamping', 'Штамповочный пресс Komatsu 500t', 'Штамповка кронштейнов и салазок'),
-        ('line-foam-1', 'ws-foam', 'Линия ППУ-1 (Вспенивание)', 'Формование и заливка подушек сидений'),
-        ('line-sew-ecoleather', 'ws-sewing', 'Линия пошива (Экокожа)', 'Автоматический раскрой и пошив экокожи'),
-        ('line-sew-textile', 'ws-sewing', 'Линия пошива (Текстиль)', 'Пошив текстильных чехлов'),
-        ('line-incoming-dock', 'ws-quality', 'Участок входного контроля', 'Входной контроль металла, пены, кожи, метизов'),
-        ('line-quality-gate', 'ws-quality', 'Пост контроля BIQS & Fast Response', 'Финишный контроль качества сидений'),
-        ('line-energy-substation', 'ws-energy', 'Подстанция и компрессорная станция', 'Электроподстанция 10кВ и магистраль сжатого воздуха 7 бар'),
-        ('line-mechanic-shop', 'ws-mechanic', 'Ремонтно-механический участок ОГМ', 'Оперативный ремонт станков и сварочных аппаратов'),
-        ('line-facility-grounds', 'ws-facility', 'АХО: Столовая, территория и охрана', 'Бытовой комплекс, санитарный надзор и ТБО')
+        ('line-cobalt', 'ws-assembly', 'Линия сборки Cobalt (Главный конвейер)', 'Сборка сидений Chevrolet Cobalt', 220),
+        ('line-tracker', 'ws-assembly', 'Линия сборки Tracker', 'Сборка автокресел Chevrolet Tracker', 140),
+        ('line-onix', 'ws-assembly', 'Линия сборки Onix', 'Сборка автокресел Chevrolet Onix', 140),
+        ('line-weld-cobalt', 'ws-welding', 'Сварочный пост Cobalt #1', 'Роботизированная сварка каркасов Cobalt', 240),
+        ('line-weld-tracker', 'ws-welding', 'Сварочный пост Tracker', 'Роботизированная сварка каркасов Tracker', 150),
+        ('line-stamp-press1', 'ws-stamping', 'Штамповочный пресс Aida 800t', 'Вырубка и гибка силовых каркасов сидений', 600),
+        ('line-stamp-press2', 'ws-stamping', 'Штамповочный пресс Komatsu 500t', 'Штамповка кронштейнов и салазок', 600),
+        ('line-foam-1', 'ws-foam', 'Линия ППУ-1 (Вспенивание)', 'Формование и заливка подушек сидений', 500),
+        ('line-sew-ecoleather', 'ws-sewing', 'Линия пошива (Экокожа)', 'Автоматический раскрой и пошив экокожи', 200),
+        ('line-sew-textile', 'ws-sewing', 'Линия пошива (Текстиль)', 'Пошив текстильных чехлов', 300),
+        ('line-incoming-dock', 'ws-quality', 'Участок входного контроля', 'Входной контроль металла, пены, кожи, метизов', 100),
+        ('line-quality-gate', 'ws-quality', 'Пост контроля BIQS & Fast Response', 'Финишный контроль качества сидений', 500),
+        ('line-energy-substation', 'ws-energy', 'Подстанция и компрессорная станция', 'Электроподстанция 10кВ и магистраль сжатого воздуха 7 бар', 1),
+        ('line-mechanic-shop', 'ws-mechanic', 'Ремонтно-механический участок ОГМ', 'Оперативный ремонт станков и сварочных аппаратов', 1),
+        ('line-facility-grounds', 'ws-facility', 'АХО: Столовая, территория и охрана', 'Бытовой комплекс, санитарный надзор и ТБО', 1)
     ]
     for l in lines_data:
         cursor.execute("SELECT id FROM assembly_lines WHERE id=?;", (l[0],))
         if not cursor.fetchone():
-            cursor.execute("INSERT INTO assembly_lines (id, department_id, name, description, is_active) VALUES (?, ?, ?, ?, 1);", l)
+            cursor.execute("INSERT INTO assembly_lines (id, department_id, name, description, target_pace_shift, is_active) VALUES (?, ?, ?, ?, ?, 1);", l)
         else:
-            cursor.execute("UPDATE assembly_lines SET department_id=?, name=?, description=?, is_active=1 WHERE id=?;", (l[1], l[2], l[3], l[0]))
+            cursor.execute("UPDATE assembly_lines SET department_id=?, name=?, description=?, target_pace_shift=?, is_active=1 WHERE id=?;", (l[1], l[2], l[3], l[4], l[0]))
 
-    # Seed Default Users
+    # Production Users
     all_users = [
         ('usr-director', 'director', hash_password('director123'), 'Фаррух Касымов (Генеральный директор завода)', 'director', 'all'),
         ('usr-deputy-dir', 'deputy_director', hash_password('deputyPass'), 'Ойбек Рустамов (Зам. генерального директора по производству)', 'director', 'all'),
         ('usr-head-quality', 'head_quality', hash_password('quality123'), 'Бахтиёр Умаров (Начальник ОТК и службы качества BIQS)', 'quality_head', 'ws-quality'),
         ('usr-eng-quality', 'engineer_quality', hash_password('eng123'), 'Рустам Исмаилов (Ведущий инженер по качеству процессов BIQS)', 'engineer', 'ws-quality'),
         ('usr-eng-reclam', 'engineer_reclamation', hash_password('eng123'), 'Анвар Каримов (Инженер по рекламациям и ISO/IATF)', 'engineer', 'ws-quality'),
-        ('usr-eng-metal', 'engineer_metal', hash_password('eng123'), 'Жасур Махмудов (Инженер по качеству сварки и металлоконструкций)', 'engineer', 'ws-welding'),
         ('usr-ctrl-cobalt', 'controller_cobalt', hash_password('qc123'), 'Дилшод Алимов (Контролёр ОТК сборочной линии Cobalt)', 'controller', 'ws-assembly'),
         ('usr-ctrl-incom', 'controller_incoming', hash_password('qc123'), 'Фарход Ахмедов (Контролёр входного контроля сырья и металла)', 'controller', 'ws-quality'),
-        ('usr-ctrl-sewing', 'controller_sewing', hash_password('qc123'), 'Гульноза Юлдашева (Контролёр ОТК участка пошива и чехлов)', 'controller', 'ws-sewing'),
         ('usr-master-asm', 'master_assembly', hash_password('master123'), 'Карим Азизов (Начальник сборочного производства / Мастер)', 'shop_head', 'ws-assembly'),
         ('usr-master-weld', 'master_welding', hash_password('master123'), 'Шерзод Рахимов (Мастер сварочного цеха)', 'shop_head', 'ws-welding'),
-        ('usr-master-stamp', 'master_stamping', hash_password('master123'), 'Сардор Алимов (Мастер штамповочного цеха)', 'shop_head', 'ws-stamping'),
         ('usr-worker-asm', 'worker_assembly', hash_password('worker123'), 'Иброхим Салимов (Оператор-сборщик линии Cobalt)', 'operator', 'ws-assembly'),
         ('usr-worker-weld', 'worker_welding', hash_password('worker123'), 'Алишер Ботиров (Сварщик роботизированной ячейки #1)', 'operator', 'ws-welding'),
-        ('usr-worker-stamp', 'worker_stamping', hash_password('worker123'), 'Нодирбек Темиров (Оператор штамповочного пресса Aida)', 'operator', 'ws-stamping'),
         ('usr-chief-energy', 'chief_energy', hash_password('energy123'), 'Улугбек Холматов (Главный энергетик завода / ОГЭ)', 'energy_head', 'ws-energy'),
         ('usr-chief-mech', 'chief_mechanic', hash_password('mech123'), 'Баходир Мамаджанов (Главный механик завода / ОГМ)', 'mechanic_head', 'ws-mechanic'),
         ('usr-mech-line', 'mechanic_line', hash_password('mech123'), 'Тимур Назаров (Наладчик-ремонтник оборудования ОГМ)', 'mechanic', 'ws-mechanic'),
@@ -467,7 +417,7 @@ def init_db():
 
 init_db()
 
-app = FastAPI(title='СП «Uz-Tong Hong Co.» BIQS Platform')
+app = FastAPI(title='СП «Uz-Tong Hong Co.» Digital Manufacturing Platform')
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount('/static', StaticFiles(directory='static'), name='static')
 
@@ -499,7 +449,8 @@ _start_keep_alive_worker()
 def ping_health():
     return {
         'status': 'ok',
-        'app': 'Uz-Tong Hong Co. BIQS Platform',
+        'alive': True,
+        'app': 'Uz-Tong Hong Co. Digital Manufacturing & BIQS Platform',
         'timestamp': datetime.now().isoformat()
     }
 
@@ -542,76 +493,15 @@ class AdminCreateUserRequest(BaseModel):
 class CreateInviteKeyRequest(BaseModel):
     role: str
     department_id: str
-    max_uses: int = 10
+    max_uses: int = 50
     note: Optional[str] = ''
-
-class CreateIssueRequest(BaseModel):
-    department_id: str
-    line_name: str
-    defect_type: str
-    severity: str
-    description: str
-    reporter_name: Optional[str] = ''
-    downtime_minutes: Optional[int] = 0
-    initial_photo_url: Optional[str] = ''
 
 class AssemblyLineRequest(BaseModel):
     department_id: str
     name: str
     description: Optional[str] = ''
+    target_pace_shift: Optional[int] = 200
 
-class AssignIssueRequest(BaseModel):
-    assigned_to: str
-
-class VerificationRequest(BaseModel):
-    action_taken: str
-    verification_photo_url: str
-
-class CreateBiqsAuditRequest(BaseModel):
-    department_id: str
-    line_name: str
-    auditor_name: str
-    worker_name: str
-    worker_knowledge_status: str
-    compliance_score: float
-    questions: List[Dict[str, Any]]
-    violation_photos: List[str] = []
-    comments: Optional[str] = ''
-
-class CreateQualityDailyTaskRequest(BaseModel):
-    plan_date: str
-    shift: Optional[str] = '1-я смена'
-    target_role: str
-    title: str
-    description: str
-    department_id: str
-    line_name: str
-    assigned_to_user_id: Optional[str] = 'all'
-    assigned_to_name: Optional[str] = ''
-    priority: Optional[str] = 'high'
-    expected_output: Optional[str] = ''
-
-class SubmitDailyTaskReportRequest(BaseModel):
-    status: str
-    units_checked: Optional[int] = 0
-    defects_prevented: Optional[int] = 0
-    report_text: str
-    report_photo_url: Optional[str] = ''
-
-class HeadReviewDailyTaskRequest(BaseModel):
-    status: str
-    head_review_comment: Optional[str] = ''
-
-class SubmitDailySummaryReportRequest(BaseModel):
-    report_date: str
-    shift: Optional[str] = '1-я смена'
-    summary_conclusion: str
-
-class DirectorVerdictRequest(BaseModel):
-    report_date: str
-    director_verdict: str
-
-# New Models for Andon & Multi-Department Architecture
 class TriggerAndonEventRequest(BaseModel):
     department_id: str
     line_name: str
@@ -699,16 +589,31 @@ class FacilityChecklistRequest(BaseModel):
     closed_requests: int = 0
     report_text: str
 
-class Base64PhotoUploadRequest(BaseModel):
-    image_data: str
-    filename_prefix: Optional[str] = 'defect'
+class CreateQualityDailyTaskRequest(BaseModel):
+    plan_date: str
+    shift: Optional[str] = '1-я смена'
+    target_role: str
+    title: str
+    description: str
+    department_id: str
+    line_name: str
+    assigned_to_user_id: Optional[str] = 'all'
+    assigned_to_name: Optional[str] = ''
+    priority: Optional[str] = 'high'
+    expected_output: Optional[str] = ''
+
+class CreateBiqsAuditRequest(BaseModel):
+    department_id: str
+    line_name: str
+    auditor_name: str
+    worker_name: str
+    worker_knowledge_status: str
+    compliance_score: float
+    questions: List[Dict[str, Any]]
+    violation_photos: List[str] = []
+    comments: Optional[str] = ''
 
 # ==================== AUTHENTICATION ROUTES ====================
-
-@app.get('/auth/super-admin-login', response_class=HTMLResponse)
-def get_super_admin_login_page():
-    with open('static/super_admin_login.html', 'r', encoding='utf-8') as f:
-        return f.read()
 
 @app.post('/api/auth/invite-code-login')
 def invite_code_login(req: InviteCodeLoginRequest, request: Request, response: Response):
@@ -734,7 +639,7 @@ def invite_code_login(req: InviteCodeLoginRequest, request: Request, response: R
 
     session_token = secrets.token_hex(32)
     display_name = req.full_name.strip() if req.full_name and req.full_name.strip() else f"Сотрудник ({invite['key_code']})"
-    assigned_role = invite.get('role') or 'user'
+    assigned_role = invite.get('role') or 'operator'
 
     SESSIONS[session_token] = {
         'user_id': f"usr-inv-{uuid.uuid4().hex[:6]}",
@@ -747,7 +652,7 @@ def invite_code_login(req: InviteCodeLoginRequest, request: Request, response: R
         'invite_code': invite['key_code']
     }
     response.set_cookie(key='session_token', value=session_token, httponly=True, max_age=86400*7)
-    log_action(SESSIONS[session_token]['user_id'], display_name, 'Вход по инвайт-коду', f"Код: {invite['key_code']}", request.client.host if request.client else '')
+    log_action(SESSIONS[session_token]['user_id'], display_name, 'Вход по коду приглашения', f"Код: {invite['key_code']}")
     return {'status': 'success', 'user': SESSIONS[session_token], 'session_token': session_token}
 
 @app.post('/api/auth/login')
@@ -782,7 +687,7 @@ def admin_login(req: AdminLoginRequest, request: Request, response: Response):
         'is_guest': False
     }
     response.set_cookie(key='session_token', value=session_token, httponly=True, max_age=86400*7)
-    log_action(user['id'], user['username'], 'Успешная авторизация', f"Роль: {user['role']}", request.client.host if request.client else '')
+    log_action(user['id'], user['username'], 'Успешная авторизация', f"Роль: {user['role']}")
     return {'status': 'success', 'user': SESSIONS[session_token], 'session_token': session_token}
 
 @app.post('/api/auth/logout')
@@ -790,7 +695,7 @@ def logout(request: Request, response: Response):
     token = request.cookies.get('session_token')
     if token and token in SESSIONS:
         u = SESSIONS[token]
-        log_action(u['user_id'], u['username'], 'Выход из системы', '', request.client.host if request.client else '')
+        log_action(u['user_id'], u['username'], 'Выход из системы', '')
         del SESSIONS[token]
     response.delete_cookie('session_token')
     return {'status': 'logged_out'}
@@ -807,8 +712,8 @@ def guest_login(response: Response):
     session_token = secrets.token_hex(32)
     SESSIONS[session_token] = {
         'user_id': f'guest-{uuid.uuid4().hex[:6]}',
-        'username': 'Гость / Mehmon',
-        'full_name': 'Гостевой просмотр (Demo)',
+        'username': 'Гость',
+        'full_name': 'Гостевой просмотр (Демо)',
         'role': 'guest',
         'department_id': 'all',
         'is_guest': True
@@ -816,7 +721,7 @@ def guest_login(response: Response):
     response.set_cookie(key='session_token', value=session_token, httponly=True, max_age=3600)
     return {'status': 'success', 'user': SESSIONS[session_token], 'session_token': session_token}
 
-# ==================== BASIC DIRECTORY ROUTES ====================
+# ==================== DEPARTMENTS & ASSEMBLY LINES ====================
 
 @app.get('/api/departments')
 def list_departments():
@@ -851,46 +756,104 @@ def list_lines(department_id: Optional[str] = None):
     conn.close()
     return {'lines': rows}
 
-# ==================== WORKSTATION & CORRIDORS API ====================
+# ==================== MASTER REAL-TIME DASHBOARD API ====================
 
-@app.get('/api/workstation/profile')
-def get_workstation_profile(request: Request, simulated_role: Optional[str] = None):
-    user = get_current_user_from_req(request)
-    role = simulated_role if (simulated_role and user and user.get('role') in ['admin', 'director', 'guest']) else (user.get('role', 'operator') if user else 'guest')
-    user_dept = user.get('department_id', 'ws-assembly') if user else 'ws-assembly'
+@app.get('/api/master/dashboard')
+def get_master_dashboard(department_id: Optional[str] = 'ws-assembly'):
+    conn = get_db()
+    cursor = conn.cursor()
+    today_str = datetime.now().strftime('%Y-%m-%d')
 
-    role_titles = {
-        'operator': {'title': 'Рабочее место: Рабочий линии / Оператор', 'corridor': 'worker', 'level': 'Операционный уровень'},
-        'controller': {'title': 'Рабочее место: Контролёр качества ОТК', 'corridor': 'controller', 'level': 'Линейный надзор ОТК'},
-        'engineer': {'title': 'Рабочее место: Инженер по качеству BIQS', 'corridor': 'engineer', 'level': 'Инженерный статус'},
-        'mechanic': {'title': 'Рабочее место: Наладчик / Ремонтник ОГМ', 'corridor': 'mechanic', 'level': 'Служба ТОиР и механики'},
-        'mechanic_head': {'title': 'Рабочее место: Главный механик завода (ОГМ)', 'corridor': 'mechanic_head', 'level': 'Руководитель службы ремонта'},
-        'energy_head': {'title': 'Рабочее место: Главный энергетик завода (ОГЭ)', 'corridor': 'energy_head', 'level': 'Энергослужба завода'},
-        'facility_head': {'title': 'Рабочее место: Начальник АХО', 'corridor': 'facility_head', 'level': 'Хозяйственная служба'},
-        'shop_head': {'title': 'Рабочее место: Мастер / Начальник цеха', 'corridor': 'master', 'level': 'Руководство смены цеха'},
-        'quality_head': {'title': 'Рабочее место: Начальник ОТК и службы качества', 'corridor': 'quality_head', 'level': 'Руководство ОТК'},
-        'director': {'title': 'Панель Генерального директора завода', 'corridor': 'director', 'level': 'Высшее руководство'},
-        'admin': {'title': 'Рабочее место: Главный Администратор', 'corridor': 'admin', 'level': 'Администрирование платформы'},
-        'guest': {'title': 'Демо-режим: Гостевой просмотр', 'corridor': 'guest', 'level': 'Только чтение'}
-    }
+    # Get lines of target department
+    cursor.execute("""
+        SELECT l.*, d.name_ru as dept_name
+        FROM assembly_lines l
+        LEFT JOIN departments d ON l.department_id = d.id
+        WHERE l.department_id = ? AND l.is_active = 1
+        ORDER BY l.name ASC;
+    """, (department_id,))
+    lines = [dict(r) for r in cursor.fetchall()]
 
-    meta = role_titles.get(role, role_titles['operator'])
+    # Aggregate worker inputs today for each line
+    line_metrics = []
+    total_plan = 0
+    total_fact = 0
+    total_scrap = 0
+    total_downtime = 0
+
+    for l in lines:
+        cursor.execute("""
+            SELECT 
+                COALESCE(SUM(units_made), 0) as fact,
+                COALESCE(SUM(defects_count), 0) as scrap
+            FROM worker_shift_inputs
+            WHERE line_name = ? AND date = ?;
+        """, (l['name'], today_str))
+        w_agg = cursor.fetchone()
+        fact = w_agg[0] or 0
+        scrap = w_agg[1] or 0
+
+        # Check line issues
+        cursor.execute("""
+            SELECT 
+                COALESCE(SUM(downtime_minutes), 0) as downtime,
+                COUNT(CASE WHEN status != 'closed' THEN 1 END) as open_issues
+            FROM line_issues
+            WHERE line_name = ?;
+        """, (l['name'],))
+        i_agg = cursor.fetchone()
+        downtime = i_agg[0] or 0
+        open_issues = i_agg[1] or 0
+
+        plan = l.get('target_pace_shift', 200)
+        total_plan += plan
+        total_fact += fact
+        total_scrap += scrap
+        total_downtime += downtime
+
+        status = "В норме"
+        if open_issues > 0:
+            status = "Остановка / Ремонт"
+        elif fact >= plan:
+            status = "План выполнен"
+
+        rate = round((fact / plan * 100), 1) if plan > 0 else 0
+
+        line_metrics.append({
+            'line_id': l['id'],
+            'line_name': l['name'],
+            'description': l['description'] or 'Технологический пост',
+            'plan': plan,
+            'fact': fact,
+            'scrap': scrap,
+            'downtime': downtime,
+            'rate': rate,
+            'status': status
+        })
+
+    conn.close()
+
     return {
-        'role': role,
-        'department_id': user_dept,
-        'meta': meta,
-        'user_name': user.get('full_name', 'Сотрудник завода') if user else 'Гость'
+        'department_id': department_id,
+        'summary': {
+            'total_plan': total_plan,
+            'total_fact': total_fact,
+            'total_scrap': total_scrap,
+            'total_downtime': total_downtime,
+            'completion_rate': round((total_fact / total_plan * 100), 1) if total_plan > 0 else 0
+        },
+        'lines': line_metrics
     }
 
 # ==================== ANDON & ESCALATION SYSTEM ====================
 
 @app.get('/api/andon/feed')
-def get_andon_feed(request: Request, department_id: Optional[str] = None):
+def get_andon_feed(department_id: Optional[str] = None):
     conn = get_db()
     cursor = conn.cursor()
 
     query = """
-        SELECT i.*, d.name_ru as dept_name_ru, d.name_uz as dept_name_uz, d.code as dept_code
+        SELECT i.*, d.name_ru as dept_name_ru, d.code as dept_code
         FROM line_issues i
         LEFT JOIN departments d ON i.department_id = d.id
     """
@@ -903,24 +866,18 @@ def get_andon_feed(request: Request, department_id: Optional[str] = None):
     cursor.execute(query, params)
     issues = [dict(r) for r in cursor.fetchall()]
 
-    now = datetime.now()
     active_stops = 0
     escalated_count = 0
 
     for item in issues:
-        # Calculate dynamic downtime
-        created_time = datetime.fromisoformat(item['created_at']) if item.get('created_at') else now
-        elapsed_minutes = int((now - created_time).total_seconds() / 60)
-        
+        dt = item.get('downtime_minutes') or 0
+        item['current_downtime_minutes'] = dt
         if item['status'] != 'closed':
-            item['current_downtime_minutes'] = max(item.get('downtime_minutes', 0), elapsed_minutes)
-            if item['current_downtime_minutes'] >= 30:
+            if dt >= 30:
                 item['escalated_to_director'] = 1
                 escalated_count += 1
             if item.get('severity') == 'critical_stop':
                 active_stops += 1
-        else:
-            item['current_downtime_minutes'] = item.get('downtime_minutes', 0)
 
     conn.close()
     return {
@@ -961,8 +918,8 @@ def trigger_andon_event(req: TriggerAndonEventRequest, request: Request):
     conn.commit()
     conn.close()
 
-    log_action(user['user_id'] if user else 'anon', reporter, '🚨 Быстрый вызов Andon', f"№{ticket_num}: {req.line_name} - {req.defect_type} ({req.error_code})")
-    return {'status': 'success', 'issue_id': issue_id, 'ticket_number': ticket_num, 'message': 'Сигнал Andon передан службам ОГМ/ОТК/Начальнику цеха'}
+    log_action(user['user_id'] if user else 'anon', reporter, '🚨 Быстрый вызов Andon', f"№{ticket_num}: {req.line_name} ({req.defect_type})")
+    return {'status': 'success', 'issue_id': issue_id, 'ticket_number': ticket_num, 'message': 'Сигнал Andon передан службам ОГМ/ОТК/Мастеру'}
 
 @app.post('/api/andon/{issue_id}/mechanic-resolve')
 def mechanic_resolve_issue(issue_id: str, req: MechanicResolveRequest, request: Request):
@@ -1001,8 +958,8 @@ def controller_unlock_line(issue_id: str, req: ControllerUnlockRequest, request:
     conn.commit()
     conn.close()
 
-    log_action(user['user_id'] if user else 'qc', ctrl_name, 'Разблокировка линии контролёром ОТК', f"ID {issue_id}: {req.controller_notes[:60]}")
-    return {'status': 'success', 'message': 'Линия успешно разблокирована и запущена в штатный режим!'}
+    log_action(user['user_id'] if user else 'qc', ctrl_name, 'Разблокировка линии контролёром ОТК', f"ID {issue_id}")
+    return {'status': 'success', 'message': 'Линия проверена и успешно разблокирована в штатный режим!'}
 
 # ==================== SHIFT REPORTS API ====================
 
@@ -1073,7 +1030,7 @@ def submit_shift_report(req: SubmitShiftReportRequest, request: Request):
     conn.commit()
     conn.close()
 
-    log_action(user['user_id'], author_name, 'Сдача сменного рапорта цеха', f"Цех: {dept_name}, План: {req.plan_units}, Факт: {req.fact_units}, Брак: {req.scrap_units}")
+    log_action(user['user_id'], author_name, 'Сдача сменного рапорта цеха', f"{dept_name}: План {req.plan_units}, Факт {req.fact_units}")
     return {'status': 'success', 'report_id': rep_id, 'message': 'Сменный рапорт успешно отправлен в систему'}
 
 @app.post('/api/shift-reports/{report_id}/head-review')
@@ -1093,8 +1050,8 @@ def head_review_shift_report(report_id: str, req: HeadReviewShiftReportRequest, 
     conn.commit()
     conn.close()
 
-    log_action(user['user_id'], reviewer_name, 'Визирование сменного рапорта начальником', f"Рапорт {report_id}")
-    return {'status': 'success', 'message': 'Рапорт завизирован руководителем'}
+    log_action(user['user_id'], reviewer_name, 'Визирование сменного рапорта', f"Рапорт {report_id}")
+    return {'status': 'success', 'message': 'Рапорт завизирован руководителем цеха'}
 
 @app.post('/api/shift-reports/{report_id}/director-approve')
 def director_approve_shift_report(report_id: str, req: DirectorApproveShiftReportRequest, request: Request):
@@ -1116,7 +1073,7 @@ def director_approve_shift_report(report_id: str, req: DirectorApproveShiftRepor
     conn.commit()
     conn.close()
 
-    log_action(user['user_id'], director_name, 'Утверждение сменного рапорта Директоратом', f"Рапорт {report_id}")
+    log_action(user['user_id'], director_name, 'Утверждение сменного рапорта Директором', f"Рапорт {report_id}")
     return {'status': 'success', 'message': 'Рапорт официально утверждён Генеральным директором'}
 
 # ==================== WORKER INPUTS API ====================
@@ -1130,7 +1087,7 @@ def submit_worker_input(req: WorkerShiftInputRequest, request: Request):
     input_id = f"wsi-{uuid.uuid4().hex[:8]}"
     today_str = datetime.now().strftime('%Y-%m-%d')
     worker_name = user.get('full_name') if user else 'Рабочий смены'
-    user_id = user.get('user_id') if user else f"anon-{uuid.uuid4().hex[:6]}"
+    user_id = user.get('user_id') if user else f"usr-{uuid.uuid4().hex[:6]}"
 
     cursor.execute("""
         INSERT INTO worker_shift_inputs (
@@ -1145,8 +1102,8 @@ def submit_worker_input(req: WorkerShiftInputRequest, request: Request):
     conn.commit()
     conn.close()
 
-    log_action(user_id, worker_name, 'Ввод данных выработки рабочим', f"Линия: {req.line_name}, Сделано: {req.units_made}, Брак: {req.defects_count}")
-    return {'status': 'success', 'input_id': input_id, 'message': 'Данные смены успешно зафиксированы в цифровом журнале'}
+    log_action(user_id, worker_name, 'Ввод данных выработки рабочим', f"{req.line_name}: сделано {req.units_made}, брак {req.defects_count}")
+    return {'status': 'success', 'input_id': input_id, 'message': 'Данные смены зафиксированы в цифровом журнале'}
 
 @app.get('/api/worker/my-inputs')
 def get_my_worker_inputs(request: Request):
@@ -1271,7 +1228,7 @@ def record_energy_metrics(req: EnergyRecordRequest, request: Request):
     conn.commit()
     conn.close()
 
-    log_action(user['user_id'] if user else 'oge', reporter, 'Внесение данных потребления ресурсов ОГЭ', f"Эл-во: {req.electricity_kwh} кВт·ч, Давление воздуха: {req.air_pressure_bar} бар")
+    log_action(user['user_id'] if user else 'oge', reporter, 'Внесение данных потребления ресурсов ОГЭ', f"Эл-во: {req.electricity_kwh} кВт·ч")
     return {'status': 'success', 'message': 'Показания энергопотребления сохранены'}
 
 @app.post('/api/energy/alert')
@@ -1287,7 +1244,6 @@ def trigger_energy_alert(req: EnergyAlertRequest, request: Request):
         VALUES (0, 0, 0, 0, 1, ?, ?);
     """, (req.emergency_text.strip(), reporter))
 
-    # Also log as critical line issue for immediate Andon trigger
     cursor.execute("SELECT COUNT(*) FROM line_issues;")
     cnt = cursor.fetchone()[0] + 1
     ticket_num = f"ANDON-OGE-{cnt:03d}"
@@ -1340,8 +1296,8 @@ def submit_facility_checklist(req: FacilityChecklistRequest, request: Request):
     conn.commit()
     conn.close()
 
-    log_action(user['user_id'] if user else 'aho', inspector, 'Чек-лист обслуживания зданий и территории АХО', f"Чистота/Столовая/Охрана проверены. Закрыто заявок: {req.closed_requests}")
-    return {'status': 'success', 'message': 'Чек-лист АХО успешно сохранен'}
+    log_action(user['user_id'] if user else 'aho', inspector, 'Чек-лист обслуживания АХО', f"Закрыто заявок: {req.closed_requests}")
+    return {'status': 'success', 'message': 'Чек-лист АХО сохранен'}
 
 # ==================== EXECUTIVE BI DASHBOARD API ====================
 
@@ -1351,7 +1307,6 @@ def get_executive_bi():
     cursor = conn.cursor()
     today_str = datetime.now().strftime('%Y-%m-%d')
 
-    # Aggregated production from shift reports
     cursor.execute("""
         SELECT 
             SUM(plan_units) as total_plan,
@@ -1363,8 +1318,8 @@ def get_executive_bi():
     """, (today_str,))
     sr_agg = cursor.fetchone()
     
-    total_plan = (sr_agg[0] or 2150)
-    total_fact = (sr_agg[1] or 2107)
+    total_plan = (sr_agg[0] or 2652)
+    total_fact = (sr_agg[1] or 2603)
     total_scrap = (sr_agg[2] or 11)
     total_downtime = (sr_agg[3] or 46)
 
@@ -1372,22 +1327,18 @@ def get_executive_bi():
     defect_rate = round((total_scrap / total_fact * 100), 2) if total_fact > 0 else 0
     defect_ppm = int((total_scrap / total_fact) * 1000000) if total_fact > 0 else 0
 
-    # OEE calculation
-    total_shift_minutes = 480 * 5  # 5 key departments * 8h shift
+    total_shift_minutes = 480 * 5
     availability = round(max(0, (total_shift_minutes - total_downtime)) / total_shift_minutes * 100, 1)
     performance = round(min(100.0, (total_fact / total_plan) * 100), 1) if total_plan > 0 else 100.0
     quality = round((max(0, total_fact - total_scrap) / total_fact) * 100, 1) if total_fact > 0 else 100.0
     overall_oee = round((availability * performance * quality) / 10000, 1)
 
-    # Capacity utilization
     capacity_utilization = round((total_fact / (total_plan * 1.05)) * 100, 1)
 
-    # Financial loss calculations (estimates for automotive seat plant)
-    scrap_cost_uzs = total_scrap * 280000 # 280k UZS per rejected part
-    downtime_cost_uzs = total_downtime * 150000 # 150k UZS per downtime min
+    scrap_cost_uzs = total_scrap * 280000
+    downtime_cost_uzs = total_downtime * 150000
     total_financial_loss_uzs = scrap_cost_uzs + downtime_cost_uzs
 
-    # Escalated issues > 30 mins
     cursor.execute("""
         SELECT i.*, d.name_ru as dept_name_ru
         FROM line_issues i
@@ -1397,7 +1348,6 @@ def get_executive_bi():
     """)
     escalated_issues = [dict(r) for r in cursor.fetchall()]
 
-    # Bottlenecks ranking (top downtime & defect departments)
     cursor.execute("""
         SELECT d.id, d.code, d.name_ru, d.head_name,
                COALESCE(SUM(sr.plan_units), 0) as plan,
@@ -1423,8 +1373,7 @@ def get_executive_bi():
         'total_defect_rate': {
             'percent': defect_rate,
             'ppm': defect_ppm,
-            'total_scrap_units': total_scrap,
-            'target_ppm': 5000
+            'total_scrap_units': total_scrap
         },
         'oee': {
             'overall_oee': overall_oee,
@@ -1444,154 +1393,17 @@ def get_executive_bi():
         'date': today_str
     }
 
-# ==================== LEGACY COMPATIBLE AUDITS & ISSUES ====================
-
-@app.get('/api/issues')
-def list_issues(request: Request, department_id: Optional[str] = None):
-    user = get_current_user_from_req(request)
-    conn = get_db()
-    cursor = conn.cursor()
-
-    if user and user['role'] in ['operator', 'shop_head'] and user['department_id'] != 'all':
-        query_dept = user['department_id']
-        cursor.execute("""
-            SELECT i.*, d.name_ru as dept_name_ru, d.name_uz as dept_name_uz, d.code as dept_code
-            FROM line_issues i
-            LEFT JOIN departments d ON i.department_id = d.id
-            WHERE i.department_id = ?
-            ORDER BY i.created_at DESC;
-        """, (query_dept,))
-    else:
-        if department_id and department_id != 'all':
-            cursor.execute("""
-                SELECT i.*, d.name_ru as dept_name_ru, d.name_uz as dept_name_uz, d.code as dept_code
-                FROM line_issues i
-                LEFT JOIN departments d ON i.department_id = d.id
-                WHERE i.department_id = ?
-                ORDER BY i.created_at DESC;
-            """, (department_id,))
-        else:
-            cursor.execute("""
-                SELECT i.*, d.name_ru as dept_name_ru, d.name_uz as dept_name_uz, d.code as dept_code
-                FROM line_issues i
-                LEFT JOIN departments d ON i.department_id = d.id
-                ORDER BY i.created_at DESC;
-            """)
-
-    issues = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    user_dept = user['department_id'] if user else 'all'
-    user_role = user['role'] if user else 'guest'
-    return {'issues': issues, 'user_department': user_dept, 'user_role': user_role}
-
-@app.post('/api/issues/create')
-def create_issue(req: CreateIssueRequest, request: Request):
-    user = get_current_user_from_req(request)
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM line_issues;")
-    cnt = cursor.fetchone()[0] + 1
-    ticket_num = f"ISS-2026-{cnt:03d}"
-    issue_id = f"iss-{uuid.uuid4().hex[:8]}"
-
-    creator = user['username'] if user else (req.reporter_name or 'Рабочий линии')
-    reporter = req.reporter_name.strip() if req.reporter_name else (user['full_name'] if user else 'Линейный сотрудник')
-
-    cursor.execute("""
-        INSERT INTO line_issues (
-            id, ticket_number, department_id, line_name, defect_type, severity,
-            description, status, initial_photo_url, created_by_user, reporter_name, downtime_minutes, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, CURRENT_TIMESTAMP);
-    """, (issue_id, ticket_num, req.department_id, req.line_name, req.defect_type, req.severity, req.description, req.initial_photo_url, creator, reporter, req.downtime_minutes or 0))
-
-    conn.commit()
-    conn.close()
-
-    log_action(user['user_id'] if user else 'anon', reporter, 'Фиксация проблемы на линии', f"№{ticket_num}, Линия: {req.line_name}, Дефект: {req.defect_type}", request.client.host if request.client else '')
-    return {'status': 'success', 'issue_id': issue_id, 'ticket_number': ticket_num}
-
-@app.post('/api/issues/{issue_id}/assign')
-def assign_issue(issue_id: str, req: AssignIssueRequest, request: Request):
-    user = require_auth(request)
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE line_issues 
-        SET assigned_to=?, status='assigned', assigned_at=CURRENT_TIMESTAMP
-        WHERE id=?;
-    """, (req.assigned_to, issue_id))
-    conn.commit()
-    conn.close()
-    log_action(user['user_id'], user['username'], 'Назначение ответственного по проблеме', f"ID: {issue_id} -> {req.assigned_to}")
-    return {'status': 'success', 'message': 'Ответственный назначен'}
-
-@app.post('/api/issues/{issue_id}/start')
-def start_issue(issue_id: str, request: Request):
-    user = require_auth(request)
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE line_issues SET status='in_progress' WHERE id=?;", (issue_id,))
-    conn.commit()
-    conn.close()
-    log_action(user['user_id'], user['username'], 'Перевод заявки в работу', f"ID: {issue_id}")
-    return {'status': 'success', 'message': 'Задача переведена в работу'}
-
-@app.post('/api/issues/{issue_id}/verify')
-def verify_issue(issue_id: str, req: VerificationRequest, request: Request):
-    user = require_auth(request)
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE line_issues 
-        SET action_taken=?, verification_photo_url=?, status='verification', resolved_at=CURRENT_TIMESTAMP
-        WHERE id=?;
-    """, (req.action_taken, req.verification_photo_url, issue_id))
-    conn.commit()
-    conn.close()
-    log_action(user['user_id'], user['username'], 'Отправка отчета об устранении дефекта', f"ID: {issue_id}")
-    return {'status': 'success', 'message': 'Фото устранения загружено на проверку'}
-
-@app.post('/api/issues/{issue_id}/close')
-def close_issue(issue_id: str, request: Request):
-    user = require_auth(request)
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE line_issues SET status='closed', closed_at=CURRENT_TIMESTAMP WHERE id=?;", (issue_id,))
-    conn.commit()
-    conn.close()
-    log_action(user['user_id'], user['username'], 'Закрытие заявки об устранении', f"ID: {issue_id}")
-    return {'status': 'success', 'message': 'Задача успешно закрыта'}
+# ==================== BIQS AUDITS & ADMIN ROUTES ====================
 
 @app.get('/api/audits/biqs')
 def list_biqs_audits(department_id: Optional[str] = None):
     conn = get_db()
     cursor = conn.cursor()
     if department_id and department_id != 'all':
-        cursor.execute("""
-            SELECT a.*, d.name_ru as dept_name_ru, d.name_uz as dept_name_uz, d.code as dept_code
-            FROM biqs_audits a
-            LEFT JOIN departments d ON a.department_id = d.id
-            WHERE a.department_id = ?
-            ORDER BY a.created_at DESC;
-        """, (department_id,))
+        cursor.execute("SELECT a.*, d.name_ru as dept_name_ru FROM biqs_audits a LEFT JOIN departments d ON a.department_id = d.id WHERE a.department_id = ? ORDER BY a.created_at DESC;", (department_id,))
     else:
-        cursor.execute("""
-            SELECT a.*, d.name_ru as dept_name_ru, d.name_uz as dept_name_uz, d.code as dept_code
-            FROM biqs_audits a
-            LEFT JOIN departments d ON a.department_id = d.id
-            ORDER BY a.created_at DESC;
-        """)
-
+        cursor.execute("SELECT a.*, d.name_ru as dept_name_ru FROM biqs_audits a LEFT JOIN departments d ON a.department_id = d.id ORDER BY a.created_at DESC;")
     rows = [dict(r) for r in cursor.fetchall()]
-    for r in rows:
-        if r.get('questions_json'):
-            r['questions'] = json.loads(r['questions_json'])
-        if r.get('violation_photos_json'):
-            r['violation_photos'] = json.loads(r['violation_photos_json'])
-        else:
-            r['violation_photos'] = []
-
     conn.close()
     return {'audits': rows}
 
@@ -1600,7 +1412,6 @@ def create_biqs_audit(req: CreateBiqsAuditRequest, request: Request):
     user = require_auth(request)
     conn = get_db()
     cursor = conn.cursor()
-
     audit_id = f"BIQS-AUD-{int(time.time())}"
     q_json = json.dumps(req.questions, ensure_ascii=False)
     photos_json = json.dumps(req.violation_photos, ensure_ascii=False)
@@ -1614,71 +1425,11 @@ def create_biqs_audit(req: CreateBiqsAuditRequest, request: Request):
         audit_id, req.auditor_name, req.department_id, req.line_name, req.compliance_score,
         req.worker_name, req.worker_knowledge_status, q_json, photos_json, req.comments
     ))
-
     cursor.execute("UPDATE departments SET compliance_score=? WHERE id=?;", (req.compliance_score, req.department_id))
     conn.commit()
     conn.close()
-    log_action(user['user_id'], user['username'], 'Проведение аудита BIQS', f"Аудит {audit_id}, Линия: {req.line_name}, Оценка: {req.compliance_score}%")
+    log_action(user['user_id'], user['username'], 'Проведение аудита BIQS', f"Аудит {audit_id}: {req.compliance_score}%")
     return {'status': 'success', 'audit_id': audit_id}
-
-@app.get('/api/dashboard/summary')
-def get_executive_summary():
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM line_issues;")
-    total_issues = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM line_issues WHERE status='open';")
-    open_issues = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM line_issues WHERE status IN ('assigned', 'in_progress', 'verification');")
-    active_issues = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM line_issues WHERE status='closed';")
-    closed_issues = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM line_issues WHERE severity='critical_stop';")
-    critical_stops = cursor.fetchone()[0]
-
-    cursor.execute("SELECT SUM(downtime_minutes) FROM line_issues;")
-    total_downtime = cursor.fetchone()[0] or 0
-
-    cursor.execute("""
-        SELECT d.id, d.code, d.name_ru, d.name_uz, d.head_name, d.compliance_score,
-               COUNT(i.id) as issue_count,
-               SUM(CASE WHEN i.status='open' THEN 1 ELSE 0 END) as open_count,
-               SUM(CASE WHEN i.status='closed' THEN 1 ELSE 0 END) as closed_count,
-               SUM(COALESCE(i.downtime_minutes, 0)) as total_downtime
-        FROM departments d
-        LEFT JOIN line_issues i ON d.id = i.department_id
-        GROUP BY d.id
-        ORDER BY d.code ASC;
-    """)
-    dept_matrix = [dict(r) for r in cursor.fetchall()]
-
-    cursor.execute("SELECT AVG(compliance_score) FROM departments;")
-    avg_score = round(cursor.fetchone()[0] or 95.0, 1)
-
-    cursor.execute("SELECT * FROM cobalt_metrics ORDER BY id DESC LIMIT 1;")
-    c_row = cursor.fetchone()
-    cobalt_data = dict(c_row) if c_row else {'assembly_pace': 145, 'target_pace': 150, 'status': 'Оптимальный'}
-
-    conn.close()
-    return {
-        'total_issues': total_issues,
-        'open_issues': open_issues,
-        'active_issues': active_issues,
-        'closed_issues': closed_issues,
-        'critical_stops': critical_stops,
-        'total_downtime_minutes': total_downtime,
-        'avg_biqs_score': avg_score,
-        'sla_avg_hours': 1.4,
-        'departments_matrix': dept_matrix,
-        'cobalt': cobalt_data
-    }
-
-# ==================== ADMIN INVITES & USERS ====================
 
 @app.get('/api/admin/invite-keys')
 def get_invite_keys(request: Request):
@@ -1706,7 +1457,6 @@ def create_invite_key(req: CreateInviteKeyRequest, request: Request):
 
     conn = get_db()
     cursor = conn.cursor()
-
     prefix = req.department_id.replace('ws-', '').upper()[:3] if req.department_id != 'all' else 'AUD'
     random_num = secrets.randbelow(9000) + 1000
     generated_code = f"UTH-{prefix}-{random_num}"
@@ -1719,7 +1469,7 @@ def create_invite_key(req: CreateInviteKeyRequest, request: Request):
 
     conn.commit()
     conn.close()
-    log_action(user['user_id'], user['username'], 'Генерация инвайт-кода', f"Код: {generated_code}, Роль: {req.role}")
+    log_action(user['user_id'], user['username'], 'Генерация инвайт-кода', f"Код: {generated_code}")
     return {'status': 'success', 'key_code': generated_code, 'key_id': key_id}
 
 @app.post('/api/admin/invite-keys/{key_id}/toggle')
@@ -1733,46 +1483,6 @@ def toggle_invite_key(key_id: str, request: Request):
     cursor.execute("UPDATE invite_keys SET is_active = 1 - is_active WHERE id=?;", (key_id,))
     conn.commit()
     conn.close()
-    log_action(user['user_id'], user['username'], 'Изменение статуса инвайт-кода', f"ID: {key_id}")
-    return {'status': 'success'}
-
-@app.post('/api/admin/create-user')
-def admin_create_user(req: AdminCreateUserRequest, request: Request):
-    user = require_auth(request)
-    if user.get('role') != 'admin':
-        raise HTTPException(status_code=403, detail='Доступ только для Главного Администратора')
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE LOWER(username)=LOWER(?);", (req.username.strip(),))
-    if cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=400, detail='Пользователь с таким логином уже зарегистрирован')
-
-    new_id = f"usr-{uuid.uuid4().hex[:8]}"
-    pwd_hash = hash_password(req.password.strip())
-
-    cursor.execute("""
-        INSERT INTO users (id, username, password, full_name, role, department_id, assigned_lines, is_active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1);
-    """, (new_id, req.username.strip(), pwd_hash, req.full_name.strip(), req.role, req.department_id, req.assigned_lines or ''))
-    conn.commit()
-    conn.close()
-    log_action(user['user_id'], user['username'], 'Создание пользователя', f"Логин: {req.username}, ФИО: {req.full_name}, Роль: {req.role}")
-    return {'status': 'success', 'user_id': new_id}
-
-@app.post('/api/admin/users/{user_id}/toggle')
-def toggle_user_active(user_id: str, request: Request):
-    user = require_auth(request)
-    if user.get('role') != 'admin':
-        raise HTTPException(status_code=403, detail='Доступ только для Главного Администратора')
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET is_active = 1 - is_active WHERE id=?;", (user_id,))
-    conn.commit()
-    conn.close()
-    log_action(user['user_id'], user['username'], 'Изменение статуса пользователя', f"User ID: {user_id}")
     return {'status': 'success'}
 
 @app.get('/api/admin/users')
@@ -1784,7 +1494,7 @@ def list_users(request: Request):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT u.id, u.username, u.full_name, u.role, u.department_id, u.assigned_lines, u.is_active, u.created_at,
+        SELECT u.id, u.username, u.full_name, u.role, u.department_id, u.is_active, u.created_at,
                d.name_ru as dept_name_ru, d.code as dept_code
         FROM users u
         LEFT JOIN departments d ON u.department_id = d.id
@@ -1793,40 +1503,6 @@ def list_users(request: Request):
     users = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return {'users': users}
-
-@app.post('/api/admin/lines')
-def create_assembly_line(req: AssemblyLineRequest, request: Request):
-    user = require_auth(request)
-    if user.get('role') != 'admin':
-        raise HTTPException(status_code=403, detail='Доступ только для Администратора')
-
-    conn = get_db()
-    cursor = conn.cursor()
-    line_id = f"line-{uuid.uuid4().hex[:6]}"
-
-    cursor.execute("""
-        INSERT INTO assembly_lines (id, department_id, name, description, is_active)
-        VALUES (?, ?, ?, ?, 1);
-    """, (line_id, req.department_id, req.name.strip(), req.description.strip()))
-
-    conn.commit()
-    conn.close()
-    log_action(user['user_id'], user['username'], 'Создание линии сборки', f"Линия: {req.name}, Цех: {req.department_id}")
-    return {'status': 'success', 'line_id': line_id}
-
-@app.delete('/api/admin/lines/{line_id}')
-def delete_assembly_line(line_id: str, request: Request):
-    user = require_auth(request)
-    if user.get('role') != 'admin':
-        raise HTTPException(status_code=403, detail='Доступ только для Администратора')
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE assembly_lines SET is_active = 0 WHERE id=?;", (line_id,))
-    conn.commit()
-    conn.close()
-    log_action(user['user_id'], user['username'], 'Удаление линии сборки', f"ID: {line_id}")
-    return {'status': 'success'}
 
 @app.get('/api/admin/logs')
 def get_system_logs(request: Request, limit: int = 50):
@@ -1840,354 +1516,6 @@ def get_system_logs(request: Request, limit: int = 50):
     logs = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return {'logs': logs}
-
-@app.post('/api/upload/photo')
-def upload_base64_photo(req: Base64PhotoUploadRequest):
-    try:
-        data = req.image_data
-        if ',' in data:
-            data = data.split(',')[1]
-        img_bytes = base64.b64decode(data)
-        filename = f"{req.filename_prefix}_{int(time.time())}_{secrets.token_hex(4)}.jpg"
-        filepath = os.path.join(UPLOAD_DIR, filename)
-        with open(filepath, 'wb') as f:
-            f.write(img_bytes)
-        return {'status': 'success', 'photo_url': f"/static/uploads/{filename}"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Ошибка обработки изображения: {str(e)}")
-
-# ==================== DAILY QUALITY TASKS & REPORTS API ====================
-
-@app.get('/api/quality/daily-tasks')
-def get_daily_quality_tasks(request: Request, date: Optional[str] = None, target_role: Optional[str] = 'all', department_id: Optional[str] = None):
-    user = get_current_user_from_req(request)
-    req_date = date.strip() if date and date.strip() else datetime.now().strftime('%Y-%m-%d')
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    query = """
-        SELECT t.*, d.name_ru as dept_name_ru, d.name_uz as dept_name_uz, d.code as dept_code
-        FROM daily_quality_tasks t
-        LEFT JOIN departments d ON t.department_id = d.id
-        WHERE t.plan_date = ?
-    """
-    params = [req_date]
-
-    if department_id and department_id != 'all':
-        query += " AND t.department_id = ?"
-        params.append(department_id)
-
-    if target_role and target_role in ['engineer', 'controller']:
-        query += " AND t.target_role = ?"
-        params.append(target_role)
-
-    query += " ORDER BY CASE t.priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 ELSE 3 END, t.created_at ASC;"
-
-    cursor.execute(query, params)
-    all_tasks = [dict(r) for r in cursor.fetchall()]
-
-    engineer_tasks = [t for t in all_tasks if t['target_role'] == 'engineer']
-    controller_tasks = [t for t in all_tasks if t['target_role'] == 'controller']
-
-    eng_total = len(engineer_tasks)
-    eng_completed = sum(1 for t in engineer_tasks if t['status'] in ['completed', 'defect_detected'])
-    eng_in_progress = sum(1 for t in engineer_tasks if t['status'] == 'in_progress')
-
-    ctrl_total = len(controller_tasks)
-    ctrl_completed = sum(1 for t in controller_tasks if t['status'] in ['completed', 'defect_detected'])
-    ctrl_in_progress = sum(1 for t in controller_tasks if t['status'] == 'in_progress')
-
-    total_units = sum(t.get('units_checked', 0) or 0 for t in all_tasks)
-    total_defects = sum(t.get('defects_prevented', 0) or 0 for t in all_tasks)
-
-    user_role = user.get('role', 'guest') if user else 'guest'
-    user_dept = user.get('department_id', '') if user else ''
-    is_admin = user_role == 'admin'
-    is_director = user_role in ['director', 'deputy_director']
-    is_quality_head = user_role in ['quality_head', 'admin'] or (user_dept == 'ws-quality' and user_role == 'auditor')
-    is_engineer = user_role in ['engineer', 'quality_head', 'admin']
-    is_controller = user_role in ['controller', 'quality_head', 'admin']
-
-    cursor.execute("SELECT * FROM daily_quality_reports WHERE report_date = ?;", (req_date,))
-    rep_row = cursor.fetchone()
-    daily_report = dict(rep_row) if rep_row else None
-
-    conn.close()
-
-    return {
-        'date': req_date,
-        'tasks': all_tasks,
-        'engineer_tasks': engineer_tasks,
-        'controller_tasks': controller_tasks,
-        'stats': {
-            'engineers': {
-                'total': eng_total,
-                'completed': eng_completed,
-                'in_progress': eng_in_progress,
-                'rate': round((eng_completed / eng_total * 100), 1) if eng_total > 0 else 0
-            },
-            'controllers': {
-                'total': ctrl_total,
-                'completed': ctrl_completed,
-                'in_progress': ctrl_in_progress,
-                'rate': round((ctrl_completed / ctrl_total * 100), 1) if ctrl_total > 0 else 0
-            },
-            'total_units_checked': total_units,
-            'total_defects_prevented': total_defects,
-            'report_status': daily_report.get('status', 'not_created') if daily_report else 'not_created'
-        },
-        'daily_report': daily_report,
-        'permissions': {
-            'can_create': is_quality_head or is_admin,
-            'can_report_engineer': is_engineer or is_quality_head or is_admin,
-            'can_report_controller': is_controller or is_quality_head or is_admin,
-            'can_review_head': is_quality_head or is_admin,
-            'can_review_director': is_director or is_admin,
-            'role': user_role,
-            'full_name': user.get('full_name', '') if user else '',
-            'user_id': user.get('user_id', '') if user else ''
-        }
-    }
-
-@app.post('/api/quality/daily-tasks')
-def create_daily_quality_task(req: CreateQualityDailyTaskRequest, request: Request):
-    user = require_auth(request)
-    role = user.get('role', '')
-    dept = user.get('department_id', '')
-    if role not in ['admin', 'quality_head'] and not (dept == 'ws-quality' and role == 'auditor'):
-        raise HTTPException(status_code=403, detail='Выдавать задания качества может только Руководитель отдела качества или Администратор')
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    task_id = f"dqt-{uuid.uuid4().hex[:8]}"
-    creator_name = user.get('full_name') or user.get('username')
-
-    cursor.execute("""
-        INSERT INTO daily_quality_tasks (
-            id, plan_date, shift, target_role, title, description,
-            department_id, line_name, assigned_to_user_id, assigned_to_name,
-            priority, expected_output, status, created_by_user, created_by_name,
-            created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, CURRENT_TIMESTAMP);
-    """, (
-        task_id, req.plan_date, req.shift or '1-я смена', req.target_role,
-        req.title.strip(), req.description.strip(), req.department_id,
-        req.line_name.strip(), req.assigned_to_user_id or 'all',
-        req.assigned_to_name or ('Все инженеры цеха' if req.target_role == 'engineer' else 'Все контролеры линии'),
-        req.priority or 'high', req.expected_output or '',
-        user['username'], creator_name
-    ))
-
-    conn.commit()
-    conn.close()
-
-    role_label = 'Инженер' if req.target_role == 'engineer' else 'Контролёр'
-    log_action(user['user_id'], creator_name, f'Выдача задания качества ({role_label})', f"№ {task_id}: {req.title[:60]}")
-    return {'status': 'success', 'task_id': task_id, 'message': 'Задание успешно зарегистрировано в плане смены'}
-
-@app.post('/api/quality/daily-tasks/{task_id}/start')
-def start_daily_quality_task(task_id: str, request: Request):
-    user = require_auth(request)
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE daily_quality_tasks SET status='in_progress' WHERE id=?;", (task_id,))
-    conn.commit()
-    conn.close()
-    log_action(user['user_id'], user.get('full_name', user['username']), 'Запуск задания качества в работу', f"Task ID: {task_id}")
-    return {'status': 'success', 'message': 'Задание принято в работу на линии'}
-
-@app.post('/api/quality/daily-tasks/{task_id}/report')
-def submit_daily_task_report(task_id: str, req: SubmitDailyTaskReportRequest, request: Request):
-    user = require_auth(request)
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        UPDATE daily_quality_tasks 
-        SET status=?, units_checked=?, defects_prevented=?,
-            report_text=?, report_photo_url=?, completed_at=CURRENT_TIMESTAMP
-        WHERE id=?;
-    """, (
-        req.status, req.units_checked or 0, req.defects_prevented or 0,
-        req.report_text.strip(), req.report_photo_url or '', task_id
-    ))
-
-    conn.commit()
-    conn.close()
-
-    log_action(
-        user['user_id'], user.get('full_name', user['username']),
-        'Сдача отчета по заданию качества',
-        f"Task {task_id}: проверено {req.units_checked}, предотвращено {req.defects_prevented} дефектов"
-    )
-    return {'status': 'success', 'message': 'Отчёт успешно сдан и передан Начальнику отдела качества'}
-
-@app.post('/api/quality/daily-tasks/{task_id}/head-review')
-def head_review_daily_task(task_id: str, req: HeadReviewDailyTaskRequest, request: Request):
-    user = require_auth(request)
-    role = user.get('role', '')
-    dept = user.get('department_id', '')
-    if role not in ['admin', 'quality_head'] and not (dept == 'ws-quality' and role == 'auditor'):
-        raise HTTPException(status_code=403, detail='Право утверждения отчетов имеет только Руководитель отдела качества или Администратор')
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        UPDATE daily_quality_tasks
-        SET head_review_status=?, head_review_comment=?
-        WHERE id=?;
-    """, (req.status, req.head_review_comment or '', task_id))
-
-    conn.commit()
-    conn.close()
-
-    log_action(user['user_id'], user.get('full_name', user['username']), 'Резолюция Начальника качества по заданию', f"Task {task_id}: {req.status}")
-    return {'status': 'success', 'message': 'Резолюция начальника отдела качества сохранена'}
-
-@app.get('/api/quality/daily-report')
-def get_daily_summary_report(request: Request, date: Optional[str] = None):
-    req_date = date.strip() if date and date.strip() else datetime.now().strftime('%Y-%m-%d')
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM daily_quality_reports WHERE report_date=?;", (req_date,))
-    rep_row = cursor.fetchone()
-
-    cursor.execute("""
-        SELECT 
-            COUNT(CASE WHEN target_role='engineer' THEN 1 END) as eng_total,
-            COUNT(CASE WHEN target_role='engineer' AND status IN ('completed', 'defect_detected') THEN 1 END) as eng_done,
-            COUNT(CASE WHEN target_role='controller' THEN 1 END) as ctrl_total,
-            COUNT(CASE WHEN target_role='controller' AND status IN ('completed', 'defect_detected') THEN 1 END) as ctrl_done,
-            SUM(COALESCE(units_checked, 0)) as total_units,
-            SUM(COALESCE(defects_prevented, 0)) as total_defects
-        FROM daily_quality_tasks
-        WHERE plan_date = ?;
-    """, (req_date,))
-    agg = dict(cursor.fetchone())
-
-    report_data = dict(rep_row) if rep_row else {
-        'id': f"dqr-{req_date}",
-        'report_date': req_date,
-        'shift': '1-я смена',
-        'head_user_id': '',
-        'head_name': '',
-        'summary_conclusion': '',
-        'status': 'draft',
-        'director_verdict': '',
-        'director_name': '',
-        'director_reviewed_at': None
-    }
-
-    report_data['engineers_total'] = agg['eng_total'] or 0
-    report_data['engineers_completed'] = agg['eng_done'] or 0
-    report_data['controllers_total'] = agg['ctrl_total'] or 0
-    report_data['controllers_completed'] = agg['ctrl_done'] or 0
-    report_data['total_units_checked'] = agg['total_units'] or 0
-    report_data['total_defects_prevented'] = agg['total_defects'] or 0
-
-    conn.close()
-    return {'report': report_data}
-
-@app.post('/api/quality/daily-report/submit')
-def submit_daily_summary_report(req: SubmitDailySummaryReportRequest, request: Request):
-    user = require_auth(request)
-    role = user.get('role', '')
-    dept = user.get('department_id', '')
-    if role not in ['admin', 'quality_head'] and not (dept == 'ws-quality' and role == 'auditor'):
-        raise HTTPException(status_code=403, detail='Формировать и направлять итоговый рапорт может только Руководитель отдела качества')
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    head_name = user.get('full_name') or user.get('username')
-    rep_id = f"dqr-{req.report_date}"
-
-    cursor.execute("SELECT id FROM daily_quality_reports WHERE report_date=?;", (req.report_date,))
-    exists = cursor.fetchone()
-
-    if exists:
-        cursor.execute("""
-            UPDATE daily_quality_reports 
-            SET head_user_id=?, head_name=?, summary_conclusion=?, status='submitted_to_director', updated_at=CURRENT_TIMESTAMP
-            WHERE report_date=?;
-        """, (user['user_id'], head_name, req.summary_conclusion.strip(), req.report_date))
-    else:
-        cursor.execute("""
-            INSERT INTO daily_quality_reports (
-                id, report_date, shift, head_user_id, head_name, summary_conclusion, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 'submitted_to_director', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
-        """, (rep_id, req.report_date, req.shift or '1-я смена', user['user_id'], head_name, req.summary_conclusion.strip()))
-
-    conn.commit()
-    conn.close()
-
-    log_action(user['user_id'], head_name, 'Отправка ежедневного рапорта качества Директорату', f"Дата: {req.report_date}")
-    return {'status': 'success', 'message': 'Ежедневный рапорт качества передан на рассмотрение Генеральному директору и Замдиректора'}
-
-@app.post('/api/quality/daily-report/director-review')
-def director_review_daily_report(req: DirectorVerdictRequest, request: Request):
-    user = require_auth(request)
-    role = user.get('role', '')
-    if role not in ['admin', 'director', 'deputy_director']:
-        raise HTTPException(status_code=403, detail='Резолюцию по рапорту может накладывать только Генеральный директор или Заместитель директора')
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    director_name = user.get('full_name') or user.get('username')
-    rep_id = f"dqr-{req.report_date}"
-
-    cursor.execute("SELECT id FROM daily_quality_reports WHERE report_date=?;", (req.report_date,))
-    exists = cursor.fetchone()
-
-    if exists:
-        cursor.execute("""
-            UPDATE daily_quality_reports
-            SET director_verdict=?, director_name=?, director_reviewed_at=CURRENT_TIMESTAMP, status='approved_by_director', updated_at=CURRENT_TIMESTAMP
-            WHERE report_date=?;
-        """, (req.director_verdict.strip(), director_name, req.report_date))
-    else:
-        cursor.execute("""
-            INSERT INTO daily_quality_reports (
-                id, report_date, shift, summary_conclusion, status, director_verdict, director_name, director_reviewed_at, created_at, updated_at
-            ) VALUES (?, ?, '1-я смена', 'Рапорт просмотрен руководством завода', 'approved_by_director', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
-        """, (rep_id, req.report_date, req.director_verdict.strip(), director_name))
-
-    conn.commit()
-    conn.close()
-
-    log_action(user['user_id'], director_name, 'Резолюция Директора по рапорту качества', f"Дата: {req.report_date}, Резолюция: {req.director_verdict[:50]}")
-    return {'status': 'success', 'message': 'Резолюция руководства сохранена. Рапорт утверждён.'}
-
-@app.get('/api/quality/staff-list')
-def get_quality_staff_list(request: Request):
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT u.id, u.username, u.full_name, u.role, u.department_id, d.name_ru as dept_name
-        FROM users u
-        LEFT JOIN departments d ON u.department_id = d.id
-        WHERE u.is_active = 1
-        ORDER BY u.role ASC, u.full_name ASC;
-    """)
-    users = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-
-    engineers = [u for u in users if u['role'] in ['engineer', 'auditor'] or (u['department_id'] == 'ws-quality' and u['role'] != 'controller')]
-    controllers = [u for u in users if u['role'] in ['controller', 'operator', 'user'] or 'Контрол' in u['full_name']]
-    heads = [u for u in users if u['role'] in ['quality_head', 'shop_head', 'director', 'admin']]
-
-    return {
-        'all_users': users,
-        'engineers': engineers,
-        'controllers': controllers,
-        'heads': heads
-    }
 
 @app.get('/', response_class=HTMLResponse)
 def index():

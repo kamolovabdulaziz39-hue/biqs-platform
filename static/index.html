@@ -786,6 +786,19 @@
           <div>
             <h2 class="module-title">Рабочее место Бригадира / Мастера цеха</h2>
             <p class="module-subtitle">Мониторинг показателей всей смены в реальном времени: план/факт, выработка, простои, открытые дефекты</p>
+          <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+            <span style="font-size: 13px; font-weight: 700; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-industry" style="color: var(--primary-blue);"></i> Производственный цех:
+            </span>
+            <select id="master-dept-filter" class="form-select" style="width: auto; min-width: 280px; padding: 6px 12px; font-size: 13px; font-weight: 600; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff;" onchange="loadMasterDashboard(this.value)">
+              <option value="ws-assembly">Сборочный цех сидений (ws-assembly)</option>
+              <option value="ws-welding">Сварочный цех металлокаркасов (ws-welding)</option>
+              <option value="ws-stamping">Штамповочный цех (ws-stamping)</option>
+              <option value="ws-sewing">Цех пошива и чехлов (ws-sewing)</option>
+              <option value="ws-foam">Цех пенополиуретана ППУ (ws-foam)</option>
+            </select>
+          </div>
+
           </div>
           <div class="module-header-actions">
             <button class="btn-action-primary btn-accent-gold" onclick="openSubmitShiftReportModal()">
@@ -802,7 +815,7 @@
           <div class="kpi-card">
             <div class="kpi-icon-box kpi-blue"><i class="fa-solid fa-cubes"></i></div>
             <div class="kpi-data">
-              <div id="master-plan-val" class="kpi-num">500</div>
+              <div id="master-plan-val" class="kpi-num">0 шт</div>
               <div class="kpi-title">Сменный план (шт)</div>
             </div>
           </div>
@@ -810,7 +823,7 @@
           <div class="kpi-card">
             <div class="kpi-icon-box kpi-green"><i class="fa-solid fa-circle-check"></i></div>
             <div class="kpi-data">
-              <div id="master-fact-val" class="kpi-num">485</div>
+              <div id="master-fact-val" class="kpi-num">0 шт</div>
               <div class="kpi-title">Фактическая выработка</div>
             </div>
           </div>
@@ -818,7 +831,7 @@
           <div class="kpi-card">
             <div class="kpi-icon-box kpi-red"><i class="fa-solid fa-ban"></i></div>
             <div class="kpi-data">
-              <div id="master-scrap-val" class="kpi-num">3</div>
+              <div id="master-scrap-val" class="kpi-num">0 шт</div>
               <div class="kpi-title">Отбраковано (Red Box)</div>
             </div>
           </div>
@@ -826,7 +839,7 @@
           <div class="kpi-card">
             <div class="kpi-icon-box kpi-amber"><i class="fa-solid fa-clock"></i></div>
             <div class="kpi-data">
-              <div id="master-downtime-val" class="kpi-num">14 мин</div>
+              <div id="master-downtime-val" class="kpi-num">0 мин</div>
               <div class="kpi-title">Простои смены</div>
             </div>
           </div>
@@ -937,19 +950,19 @@
           <div class="executive-hero-card hero-card-blue">
             <div class="executive-hero-label">
               <span>Общий выпуск завода</span>
-              <span class="badge-tag badge-blue" id="bi-prod-rate">98.2%</span>
+              <span class="badge-tag badge-blue" id="bi-prod-rate">0.0%</span>
             </div>
-            <div class="executive-hero-val" id="bi-total-production">2 107 шт.</div>
-            <div class="executive-hero-sub" id="bi-prod-plan-sub">План: 2 150 комплектов сидений и узлов</div>
+            <div class="executive-hero-val" id="bi-total-production">0 шт.</div>
+            <div class="executive-hero-sub" id="bi-prod-plan-sub">Синхронизация плана завода...</div>
           </div>
 
           <!-- 2. Общий процент брака завода -->
           <div class="executive-hero-card hero-card-red">
             <div class="executive-hero-label">
               <span>Общий процент брака</span>
-              <span class="badge-tag badge-red" id="bi-ppm-badge">5 200 PPM</span>
+              <span class="badge-tag badge-red" id="bi-ppm-badge">0 PPM</span>
             </div>
-            <div class="executive-hero-val" id="bi-defect-rate">0.52%</div>
+            <div class="executive-hero-val" id="bi-defect-rate">0.00%</div>
             <div class="executive-hero-sub" id="bi-scrap-units-sub">Всего 11 отбракованных узлов изолировано</div>
           </div>
 
@@ -959,18 +972,18 @@
               <span>OEE Оборудования завода</span>
               <span class="badge-tag badge-purple">Мировой класс</span>
             </div>
-            <div class="executive-hero-val" id="bi-oee-val">94.1%</div>
+            <div class="executive-hero-val" id="bi-oee-val">—%</div>
             <div class="oee-breakdown-row">
               <div class="oee-factor">
-                <div class="oee-factor-num" id="bi-oee-avail">96.5%</div>
+                <div class="oee-factor-num" id="bi-oee-avail">—%</div>
                 <div class="oee-factor-lbl">Доступность</div>
               </div>
               <div class="oee-factor">
-                <div class="oee-factor-num" id="bi-oee-perf">98.0%</div>
+                <div class="oee-factor-num" id="bi-oee-perf">—%</div>
                 <div class="oee-factor-lbl">Производ-сть</div>
               </div>
               <div class="oee-factor">
-                <div class="oee-factor-num" id="bi-oee-qual">99.4%</div>
+                <div class="oee-factor-num" id="bi-oee-qual">—%</div>
                 <div class="oee-factor-lbl">Качество</div>
               </div>
             </div>
@@ -980,10 +993,10 @@
           <div class="executive-hero-card hero-card-amber">
             <div class="executive-hero-label">
               <span>Финансовые потери</span>
-              <span class="badge-tag badge-amber" id="bi-loss-usd">$780 USD</span>
+              <span class="badge-tag badge-amber" id="bi-loss-usd">$0 USD</span>
             </div>
-            <div class="executive-hero-val" id="bi-total-loss">9.98 млн сум</div>
-            <div class="executive-hero-sub">Брак: 3.08 млн | Простои: 6.90 млн сум</div>
+            <div class="executive-hero-val" id="bi-total-loss">0.00 млн сум</div>
+            <div class="executive-hero-sub">Расчёт потерь от брака и простоев...</div>
           </div>
 
         </div>
