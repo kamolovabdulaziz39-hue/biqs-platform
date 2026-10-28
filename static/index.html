@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>СП «Uz-Tong Hong Co.» | Цифровая платформа управления производством, Andon и BIQS</title>
+  <title>СП «Uz-Tong Hong Co.» | Цифровая MES платформа завода</title>
   <link rel="icon" type="image/png" href="/static/logo_banner.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,16 +14,23 @@
 </head>
 <body>
 
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
   <!-- ==================== AUTHENTICATION SCREEN ==================== -->
   <div id="auth-screen" class="auth-container">
     <div class="auth-card">
       
-      <!-- Top Language Selector -->
+      <!-- Top Status & Lang Bar -->
       <div class="auth-card-top-bar">
+        <div class="auth-live-badge">
+          <span class="pulse-dot"></span>
+          <span>Завод в работе • GM BIQS Стандарт</span>
+        </div>
         <div class="auth-lang-picker">
-          <button type="button" class="lang-btn" data-lang="uz" onclick="setLanguage('uz')">Oʻzbekcha</button>
-          <span class="lang-sep">|</span>
-          <button type="button" class="lang-btn" data-lang="ru" onclick="setLanguage('ru')">Русский</button>
+          <button type="button" class="lang-btn active" data-lang="ru" onclick="setAppLanguage('ru')">Русский</button>
+          <span style="color:#cbd5e1;">|</span>
+          <button type="button" class="lang-btn" data-lang="uz" onclick="setAppLanguage('uz')">Oʻzbekcha</button>
         </div>
       </div>
 
@@ -31,36 +38,127 @@
       <div class="auth-brand-header">
         <img src="/static/logo_banner.png" alt="Uz-Tong Hong Co." class="auth-factory-logo">
         <h1 class="auth-brand-name">СП «Uz-Tong Hong Co.»</h1>
-        <p class="auth-brand-desc">Цифровая платформа завода: Иерархия «Коридоров», Andon, Сменные рапорты и BIQS</p>
-        <div class="factory-loc-pill">
-          <i class="fa-solid fa-industry"></i> <span>г. Андижан, СП ООО «Uz-Tong Hong Co.»</span>
-        </div>
+        <p class="auth-brand-desc">Цифровая MES-платформа управления заводом автокресел: Рабочие места, Andon, Сменные рапорты и Директорат</p>
       </div>
 
       <div class="auth-card-body">
 
-        <!-- 1. PRIMARY VIEW: LOGIN VIA INVITE CODE (NO USERNAME / PASSWORD FOR WORKERS!) -->
-        <div id="auth-box-invite">
-          <div style="text-align: center; margin-bottom: 16px;">
-            <h2 style="font-size: 16px; font-weight: 800; color: var(--primary-navy);">
-              Вход в систему по персональному приглашению
-            </h2>
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-              Для доступа введите персональный код, выданный Администратором завода
-            </p>
+        <!-- 1. PRIMARY FAST LOGIN: 3 MAIN ROLES (1-CLICK ENTRY) -->
+        <div class="auth-section-title">
+          <i class="fa-solid fa-arrow-right-to-bracket" style="color:var(--primary-blue);"></i>
+          <span>Быстрый вход в 1 клик по ключевой роли:</span>
+        </div>
+
+        <div class="auth-roles-grid">
+          <!-- Role 1: Worker -->
+          <div class="auth-role-card role-card-worker" onclick="quickLoginRole('worker')">
+            <div class="auth-role-icon icon-worker"><i class="fa-solid fa-user-gear"></i></div>
+            <div class="auth-role-name">Работник</div>
+            <div class="auth-role-desc">Рабочий стол оператора: чек-лист 5S, фиксация выработки, кнопка Andon</div>
+            <button type="button" class="auth-role-action-btn role-btn-worker">
+              <i class="fa-solid fa-bolt"></i> <span>Войти как Работник</span>
+            </button>
           </div>
 
-          <form id="form-invite-login" class="auth-form">
-            <div class="form-group">
-              <label for="input-invite-only-code">Код приглашения (Invite Code)</label>
-              <div class="input-wrapper">
-                <i class="fa-solid fa-ticket"></i>
-                <input type="text" id="input-invite-only-code" class="form-input" style="font-size: 15px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;" placeholder="Например: UTH-AUD-9912" required autofocus>
+          <!-- Role 2: Workshop Head / Master -->
+          <div class="auth-role-card role-card-master" onclick="quickLoginRole('master')">
+            <div class="auth-role-icon icon-master"><i class="fa-solid fa-industry"></i></div>
+            <div class="auth-role-name">Начальник цеха</div>
+            <div class="auth-role-desc">Рабочий стол цеха: монитор линий, план/факт, сдача сменного рапорта</div>
+            <button type="button" class="auth-role-action-btn role-btn-master">
+              <i class="fa-solid fa-bolt"></i> <span>Войти как Мастер</span>
+            </button>
+          </div>
+
+          <!-- Role 3: Plant Director -->
+          <div class="auth-role-card role-card-director" onclick="quickLoginRole('director')">
+            <div class="auth-role-icon icon-director"><i class="fa-solid fa-chart-pie"></i></div>
+            <div class="auth-role-name">Ген. директор</div>
+            <div class="auth-role-desc">Весь завод: сводные графики, OEE, финансовые потери, утверждение рапортов</div>
+            <button type="button" class="auth-role-action-btn role-btn-director">
+              <i class="fa-solid fa-bolt"></i> <span>Войти как Директор</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Secondary Specialized Roles Drawer -->
+        <div class="auth-extra-roles">
+          <div style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">
+            <i class="fa-solid fa-users"></i> Специалисты служб завода (1-клик):
+          </div>
+          <div class="auth-chips-row">
+            <button type="button" class="auth-mini-chip" onclick="quickLoginRole('controller')">
+              <i class="fa-solid fa-clipboard-check" style="color:var(--accent-emerald);"></i> 🔍 Контролёр ОТК
+            </button>
+            <button type="button" class="auth-mini-chip" onclick="quickLoginRole('engineer')">
+              <i class="fa-solid fa-microchip" style="color:var(--primary-blue);"></i> ⚙️ Инженер качества BIQS
+            </button>
+            <button type="button" class="auth-mini-chip" onclick="quickLoginRole('mechanic')">
+              <i class="fa-solid fa-wrench" style="color:var(--accent-amber);"></i> 🛠️ Наладчик ОГМ
+            </button>
+            <button type="button" class="auth-mini-chip" onclick="quickLoginRole('energy')">
+              <i class="fa-solid fa-bolt" style="color:#d97706;"></i> ⚡ Энергетик ОГЭ
+            </button>
+            <button type="button" class="auth-mini-chip" onclick="quickLoginRole('admin')">
+              <i class="fa-solid fa-shield-halved" style="color:#0f172a;"></i> 🛡️ Администратор
+            </button>
+          </div>
+        </div>
+
+        <!-- Secondary Login Tabs (Login/Pass & Invite Code) -->
+        <div class="auth-alt-tabs">
+          <button type="button" class="auth-alt-tab-btn active" id="btn-tab-auth-cred" onclick="switchAuthTab('cred')">
+            <i class="fa-solid fa-lock"></i> Логин и пароль
+          </button>
+          <button type="button" class="auth-alt-tab-btn" id="btn-tab-auth-invite" onclick="switchAuthTab('invite')">
+            <i class="fa-solid fa-ticket"></i> Код приглашения (Инвайт)
+          </button>
+        </div>
+
+        <!-- Form 1: Username & Password -->
+        <div id="pane-auth-cred" class="auth-form-card">
+          <form id="form-admin-login">
+            <div class="form-row-2">
+              <div class="form-group">
+                <label for="input-admin-user">Имя пользователя (Логин)</label>
+                <div class="input-wrapper">
+                  <i class="fa-solid fa-user"></i>
+                  <input type="text" id="input-admin-user" class="form-input" placeholder="например: director, master_assembly..." required>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="input-admin-pass">Пароль</label>
+                <div class="input-wrapper">
+                  <i class="fa-solid fa-key"></i>
+                  <input type="password" id="input-admin-pass" class="form-input" placeholder="Введите пароль..." required>
+                </div>
               </div>
             </div>
 
+            <div id="admin-login-error" class="error-msg hidden">
+              <i class="fa-solid fa-circle-exclamation"></i>
+              <span id="admin-login-error-text">Неверный логин или пароль</span>
+            </div>
+
+            <button type="submit" class="btn-primary-block">
+              <i class="fa-solid fa-right-to-bracket"></i>
+              <span>Войти в систему по логину</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Form 2: Invite Code -->
+        <div id="pane-auth-invite" class="auth-form-card hidden">
+          <form id="form-invite-login">
             <div class="form-group">
-              <label for="input-inspector-name">Ваше Ф.И.О. или должность (необязательно)</label>
+              <label for="input-invite-only-code">Код приглашения</label>
+              <div class="input-wrapper">
+                <i class="fa-solid fa-ticket"></i>
+                <input type="text" id="input-invite-only-code" class="form-input" placeholder="например: UTH-ASM-8841, UTH-AUD-9912..." style="text-transform:uppercase; font-weight:700;">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="input-inspector-name">Ваше Ф.И.О. (необязательно)</label>
               <div class="input-wrapper">
                 <i class="fa-solid fa-user-pen"></i>
                 <input type="text" id="input-inspector-name" class="form-input" placeholder="Ф.И.О. сотрудника...">
@@ -69,134 +167,20 @@
 
             <div id="invite-login-error" class="error-msg hidden">
               <i class="fa-solid fa-circle-exclamation"></i>
-              <span id="invite-login-error-text"></span>
+              <span id="invite-login-error-text">Недействительный код</span>
             </div>
 
-            <button type="submit" class="btn-primary-block btn-accent-gold" style="font-size: 15px; padding: 13px;">
+            <button type="submit" class="btn-primary-block" style="background:var(--accent-emerald);">
               <i class="fa-solid fa-arrow-right-to-bracket"></i>
-              <span>Войти по коду приглашения</span>
+              <span>Войти по инвайт-коду</span>
             </button>
           </form>
-
-          <!-- Quick Test Chips -->
-          <div class="demo-creds-box">
-            <div class="demo-creds-title">
-              <i class="fa-solid fa-key"></i> <span>Коды приглашений для быстрого тестирования:</span>
-            </div>
-            <div class="demo-chips">
-              <button type="button" class="demo-chip chip-gold" onclick="fillInviteCode('UTH-QHEAD-9003')">
-                <strong>UTH-QHEAD-9003</strong> (Начальник ОТК)
-              </button>
-              <button type="button" class="demo-chip chip-blue" onclick="fillInviteCode('UTH-ENG-7001')">
-                <strong>UTH-ENG-7001</strong> (Инженер качества)
-              </button>
-              <button type="button" class="demo-chip chip-emerald" onclick="fillInviteCode('UTH-CTRL-8002')">
-                <strong>UTH-CTRL-8002</strong> (Контролёр ОТК)
-              </button>
-              <button type="button" class="demo-chip" onclick="fillInviteCode('UTH-ASM-8841')">
-                <strong>UTH-ASM-8841</strong> (Сборочный цех)
-              </button>
-            </div>
-          </div>
-
-          <!-- Bottom link: Switch to Admin login -->
-          <div style="text-align: center; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e2e8f0;">
-            <button type="button" class="link-btn-admin" onclick="toggleAdminAuth(true)">
-              <i class="fa-solid fa-lock"></i> <span>Вход по логину и паролю (Руководство, Специалисты, Мастера)</span>
-            </button>
-          </div>
         </div>
 
-        <!-- 2. SECONDARY VIEW: LOGIN (USERNAME & PASSWORD) FOR LEADERSHIP AND SPECIALISTS -->
-        <div id="auth-box-admin" class="hidden">
-          <div style="text-align: center; margin-bottom: 14px;">
-            <h2 style="font-size: 16px; font-weight: 800; color: var(--primary-navy);">
-              Вход для Руководства, Специалистов и Мастеров
-            </h2>
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">
-              Выберите роль для быстрой проверки «Коридоров» зоны ответственности:
-            </p>
-          </div>
-
-          <!-- Quick Role Selection Buttons -->
-          <div style="margin-bottom: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px;">
-            <div style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">
-              <i class="fa-solid fa-users"></i> Быстрый выбор ключевой роли (1 клик):
-            </div>
-            <div class="demo-chips" style="display: flex; flex-wrap: wrap; gap: 6px;">
-              <button type="button" class="demo-chip" style="font-size: 11px; font-weight:700;" onclick="fillUserCreds('director', 'director123')">
-                👔 Ген. директор
-              </button>
-              <button type="button" class="demo-chip" style="font-size: 11px; font-weight:700;" onclick="fillUserCreds('master_assembly', 'master123')">
-                👨‍💼 Мастер цеха сборки
-              </button>
-              <button type="button" class="demo-chip" style="font-size: 11px; font-weight:700;" onclick="fillUserCreds('worker_assembly', 'worker123')">
-                👷 Рабочий сборки
-              </button>
-              <button type="button" class="demo-chip chip-gold" style="font-size: 11px; font-weight:700;" onclick="fillUserCreds('head_quality', 'quality123')">
-                🏅 Начальник ОТК
-              </button>
-              <button type="button" class="demo-chip chip-blue" style="font-size: 11px; font-weight:700;" onclick="fillUserCreds('engineer_quality', 'eng123')">
-                ⚙️ Инженер качества
-              </button>
-              <button type="button" class="demo-chip chip-emerald" style="font-size: 11px; font-weight:700;" onclick="fillUserCreds('controller_cobalt', 'qc123')">
-                🔍 Контролёр ОТК
-              </button>
-              <button type="button" class="demo-chip" style="font-size: 11px; font-weight:700;" onclick="fillUserCreds('mechanic_line', 'mech123')">
-                🛠️ Механик ОГМ
-              </button>
-              <button type="button" class="demo-chip" style="font-size: 11px; font-weight:700;" onclick="fillUserCreds('chief_energy', 'energy123')">
-                ⚡ Главный энергетик (ОГЭ)
-              </button>
-              <button type="button" class="demo-chip" style="font-size: 11px; font-weight:700;" onclick="fillUserCreds('head_facility', 'facility123')">
-                🧹 Начальник АХО
-              </button>
-              <button type="button" class="demo-chip" style="font-size: 11px; font-weight:700;" onclick="fillUserCreds('admin_master_ov777', 'Uz_Cobalt_2026_Secure#99')">
-                🛡️ Админ
-              </button>
-            </div>
-          </div>
-
-          <form id="form-admin-login" class="auth-form">
-            <div class="form-group">
-              <label for="input-admin-user">Имя пользователя (Логин)</label>
-              <div class="input-wrapper">
-                <i class="fa-solid fa-user-shield"></i>
-                <input type="text" id="input-admin-user" class="form-input" placeholder="Введите логин..." required>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="input-admin-pass">Пароль</label>
-              <div class="input-wrapper">
-                <i class="fa-solid fa-lock"></i>
-                <input type="password" id="input-admin-pass" class="form-input" placeholder="Введите пароль..." required>
-              </div>
-            </div>
-
-            <div id="admin-login-error" class="error-msg hidden">
-              <i class="fa-solid fa-circle-exclamation"></i>
-              <span id="admin-login-error-text"></span>
-            </div>
-
-            <button type="submit" class="btn-primary-block">
-              <i class="fa-solid fa-right-to-bracket"></i>
-              <span>Войти в систему</span>
-            </button>
-          </form>
-
-          <div style="text-align: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
-            <button type="button" class="link-btn-admin" onclick="toggleAdminAuth(false)">
-              <span>← Вернуться к входу по инвайт-коду</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- 3. GUEST / DEMO MODE -->
-        <div style="text-align: center; margin-top: 20px; padding: 12px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 0 0 var(--radius-xl) var(--radius-xl);">
-          <button type="button" onclick="enterGuestMode()" style="background: none; border: none; font-size: 12px; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; transition: all 0.2s;">
-            <i class="fa-solid fa-eye"></i>
-            <span>Гостевой просмотр (Демо-режим для делегаций)</span>
+        <!-- Demo Mode Link -->
+        <div style="text-align: center; margin-top: 14px;">
+          <button type="button" onclick="enterGuestMode()" style="background:none; border:none; font-size:12px; font-weight:700; color:var(--text-muted); cursor:pointer;">
+            <i class="fa-solid fa-eye"></i> Открыть гостевой режим (Демо)
           </button>
         </div>
 
@@ -208,803 +192,589 @@
   <!-- ==================== MAIN DASHBOARD SCREEN ==================== -->
   <div id="dashboard-screen" class="dashboard-root hidden">
 
-    <!-- Top Universal Header Bar -->
+    <!-- Universal Top Header -->
     <header class="main-header">
       <div class="header-left">
         <img src="/static/logo_banner.png" alt="Uz-Tong Hong Co." class="header-logo">
-        <div class="header-brand-info">
-          <div class="brand-line-1">
-            <span class="brand-title-bold">СП «Uz-Tong Hong Co.»</span>
-            <span id="user-dept-badge" class="dept-badge">Все цеха</span>
+        <div>
+          <div class="header-brand-title">
+            <span>СП «Uz-Tong Hong Co.»</span>
+            <span class="factory-status-pill">
+              <span class="pulse-dot"></span>
+              <span id="header-plant-status-text">Завод в работе • 96.8% BIQS</span>
+            </span>
           </div>
-          <div class="brand-line-2">Единая цифровая нить: Иерархия «Коридоров», Andon, Сменные рапорты & BIQS</div>
+          <div class="header-brand-sub">Единая цифровая MES-нить: Рабочие места, Andon, Сменные рапорты & BIQS</div>
         </div>
       </div>
 
       <div class="header-right">
-        <!-- Live Instant Language Switcher -->
-        <div class="header-lang-switch">
-          <button type="button" class="lang-btn" data-lang="uz" onclick="setLanguage('uz')">Oʻzbekcha</button>
-          <span class="lang-sep">|</span>
-          <button type="button" class="lang-btn" data-lang="ru" onclick="setLanguage('ru')">Русский</button>
+        <!-- Live Clock -->
+        <div class="header-clock-box">
+          <i class="fa-regular fa-clock"></i>
+          <span id="live-clock-display">--:--:--</span>
+          <span style="color:#64748b; margin:0 4px;">•</span>
+          <span class="badge-tag badge-blue" style="font-size:10px; padding:2px 6px;">1-я смена</span>
         </div>
 
-        <!-- Quick Andon Trigger Header Button -->
-        <button type="button" class="btn-header-tool" style="background: #ef4444; color: #fff; border-color: #ef4444;" onclick="openAndonTriggerModal()" title="Быстрый Andon вызов">
-          <i class="fa-solid fa-bell"></i> <span class="hide-mobile">Andon вызов</span>
+        <!-- Quick Andon Trigger Button -->
+        <button type="button" class="btn-header-andon" onclick="openAndonTriggerModal()" title="Мгновенный вызов Andon">
+          <i class="fa-solid fa-bell"></i>
+          <span>Andon вызов</span>
         </button>
 
-        <button id="btn-export-pdf" class="btn-header-tool" title="Выгрузить отчёт (PDF)">
-          <i class="fa-solid fa-file-pdf"></i> <span class="hide-mobile">PDF / Печать</span>
-        </button>
-
-        <div class="user-pill">
-          <div class="user-avatar-circle">
-            <i class="fa-solid fa-user-check"></i>
-          </div>
-          <div class="user-meta">
+        <!-- User Profile Pill -->
+        <div class="header-user-card">
+          <div class="user-avatar-circle" id="user-avatar-text">У</div>
+          <div>
             <div id="user-display-name" class="user-meta-name">Сотрудник</div>
             <div id="user-display-role" class="user-meta-role">Роль</div>
           </div>
+          <button id="btn-logout" class="btn-logout-tool" title="Выход из системы" onclick="logoutUser()">
+            <i class="fa-solid fa-right-from-bracket"></i>
+          </button>
         </div>
-
-        <button id="btn-logout" class="btn-logout-tool" title="Выход">
-          <i class="fa-solid fa-right-from-bracket"></i>
-        </button>
       </div>
     </header>
 
-    <!-- INTERACTIVE ROLE CORRIDOR SIMULATOR BAR -->
-    <div class="role-corridor-bar" id="role-corridor-bar">
-      <span class="corridor-bar-label"><i class="fa-solid fa-arrows-split-up-and-left"></i> «Коридор» зоны ответственности:</span>
-      <button type="button" class="corridor-chip-btn" id="chip-role-operator" onclick="simulateRoleSwitch('operator')">
-        <i class="fa-solid fa-user"></i> 👷 Рабочий линии
-      </button>
-      <button type="button" class="corridor-chip-btn" id="chip-role-controller" onclick="simulateRoleSwitch('controller')">
-        <i class="fa-solid fa-clipboard-check"></i> 🔍 Контролёр ОТК
-      </button>
-      <button type="button" class="corridor-chip-btn" id="chip-role-engineer" onclick="simulateRoleSwitch('engineer')">
-        <i class="fa-solid fa-microchip"></i> ⚙️ Инженер качества
-      </button>
-      <button type="button" class="corridor-chip-btn" id="chip-role-mechanic" onclick="simulateRoleSwitch('mechanic')">
-        <i class="fa-solid fa-screwdriver-wrench"></i> 🛠️ Механик ОГМ
-      </button>
-      <button type="button" class="corridor-chip-btn" id="chip-role-energy" onclick="simulateRoleSwitch('energy_head')">
-        <i class="fa-solid fa-bolt"></i> ⚡ Энергетик ОГЭ
-      </button>
-      <button type="button" class="corridor-chip-btn" id="chip-role-facility" onclick="simulateRoleSwitch('facility_head')">
-        <i class="fa-solid fa-broom"></i> 🧹 Инспектор АХО
-      </button>
-      <button type="button" class="corridor-chip-btn" id="chip-role-master" onclick="simulateRoleSwitch('shop_head')">
-        <i class="fa-solid fa-user-tie"></i> 👨‍💼 Мастер цеха
-      </button>
-      <button type="button" class="corridor-chip-btn" id="chip-role-director" onclick="simulateRoleSwitch('director')">
-        <i class="fa-solid fa-crown"></i> 👔 Ген. директор
-      </button>
-    </div>
+    <!-- WORKSPACE NAVIGATION TABS BAR -->
+    <nav class="workspace-nav-bar">
+      <div class="ws-tabs-left">
+        <!-- 1. Рабочий стол Работника -->
+        <button id="nav-btn-worker" class="ws-nav-btn active" onclick="switchMainWorkspace('worker')">
+          <i class="fa-solid fa-user-gear"></i>
+          <span>Рабочий стол Работника</span>
+        </button>
 
-    <!-- Navigation Tabs for Modules -->
-    <nav class="modules-nav">
-      <!-- 1. Рабочее место сотрудника (Инженер, Контроллер, Рабочий) -->
-      <button id="nav-btn-corridor" class="module-nav-btn active" onclick="switchModule('corridor')">
-        <i class="fa-solid fa-id-badge"></i>
-        <span>Рабочее место сотрудника</span>
-      </button>
+        <!-- 2. Рабочий стол Начальника цеха -->
+        <button id="nav-btn-master" class="ws-nav-btn" onclick="switchMainWorkspace('master')">
+          <i class="fa-solid fa-industry"></i>
+          <span>Рабочий стол Начальника цеха</span>
+        </button>
 
-      <!-- 2. Рабочее место Бригадира / Мастера цеха -->
-      <button id="nav-btn-master" class="module-nav-btn" onclick="switchModule('master')">
-        <i class="fa-solid fa-users-viewfinder"></i>
-        <span>Рабочее место Мастера цеха</span>
-      </button>
+        <!-- 3. Рабочий стол Генерального директора -->
+        <button id="nav-btn-director" class="ws-nav-btn" onclick="switchMainWorkspace('director')">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>Рабочий стол Директора (Весь завод)</span>
+        </button>
 
-      <!-- 3. Общая лента Andon & Feed по заводу -->
-      <button id="nav-btn-andon" class="module-nav-btn" onclick="switchModule('andon')">
-        <i class="fa-solid fa-tower-broadcast"></i>
-        <span>Лента Andon & Алерты</span>
-        <span class="badge-tag badge-red" id="nav-andon-active-badge" style="display:none;">0</span>
-      </button>
+        <!-- 4. Лента Andon -->
+        <button id="nav-btn-andon" class="ws-nav-btn" onclick="switchMainWorkspace('andon')">
+          <i class="fa-solid fa-tower-broadcast"></i>
+          <span>Лента Andon</span>
+          <span id="nav-andon-badge" class="badge-tag badge-red" style="display:none;">0</span>
+        </button>
 
-      <!-- 4. Сменные цифровые рапорты цехов -->
-      <button id="nav-btn-shift-reports" class="module-nav-btn" onclick="switchModule('shift_reports')">
-        <i class="fa-solid fa-file-invoice"></i>
-        <span>Сменные рапорты цехов</span>
-      </button>
+        <!-- 5. Сменные рапорты -->
+        <button id="nav-btn-shift_reports" class="ws-nav-btn" onclick="switchMainWorkspace('shift_reports')">
+          <i class="fa-solid fa-file-invoice"></i>
+          <span>Сменные рапорты</span>
+        </button>
 
-      <!-- 5. Дашборд Генерального директора (Executive BI) -->
-      <button id="nav-btn-executive" class="module-nav-btn" onclick="switchModule('executive')">
-        <i class="fa-solid fa-chart-pie"></i>
-        <span>Дашборд Директора (BI)</span>
-      </button>
+        <!-- 6. Стандарты BIQS -->
+        <button id="nav-btn-biqs" class="ws-nav-btn" onclick="switchMainWorkspace('biqs')">
+          <i class="fa-solid fa-clipboard-check"></i>
+          <span>Стандарты BIQS</span>
+        </button>
 
-      <!-- 6. Задания службы качества ОТК -->
-      <button id="nav-btn-mod5" class="module-nav-btn" onclick="switchModule('mod5')">
-        <i class="fa-solid fa-list-check"></i>
-        <span>План качества (ОТК)</span>
-      </button>
+        <!-- 7. Админ панель -->
+        <button id="nav-btn-admin" class="ws-nav-btn hidden" onclick="switchMainWorkspace('admin')">
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>Администратор</span>
+        </button>
+      </div>
 
-      <!-- 7. BIQS Аудиты -->
-      <button id="nav-btn-mod2" class="module-nav-btn" onclick="switchModule('mod2')">
-        <i class="fa-solid fa-clipboard-check"></i>
-        <span>BIQS Аудиты</span>
-      </button>
-
-      <!-- 8. Админ панель -->
-      <button id="nav-btn-mod4" class="module-nav-btn hidden" onclick="switchModule('mod4')">
-        <i class="fa-solid fa-user-gear"></i>
-        <span>Админ: Инвайты и Доступ</span>
-      </button>
+      <!-- Quick Fast Switcher -->
+      <div class="ws-tabs-right">
+        <div class="role-switcher-pill">
+          <span class="role-switcher-label"><i class="fa-solid fa-arrows-spin"></i> Вид:</span>
+          <button type="button" class="role-switch-btn active" id="pill-ws-worker" onclick="switchMainWorkspace('worker')">Работник</button>
+          <button type="button" class="role-switch-btn" id="pill-ws-master" onclick="switchMainWorkspace('master')">Цех</button>
+          <button type="button" class="role-switch-btn" id="pill-ws-director" onclick="switchMainWorkspace('director')">Директор</button>
+        </div>
+      </div>
     </nav>
 
-    <!-- Main Dynamic Content Container -->
+    <!-- MAIN DYNAMIC WORKSPACES CONTAINER -->
     <main class="dashboard-main-container">
 
-      <!-- ==================== MODULE: РАБОЧЕЕ МЕСТО СОТРУДНИКА («КОРИДОР») ==================== -->
-      <section id="section-corridor" class="module-section">
+      <!-- ==================== 1. РАБОЧИЙ СТОЛ РАБОТНИКА ==================== -->
+      <section id="section-worker" class="workspace-section">
         
-        <!-- Role Corridor Banner Header -->
-        <div class="quality-role-banner banner-engineer" id="corridor-banner-wrap" style="margin-bottom: 20px;">
-          <div class="role-banner-left">
-            <div class="role-icon-circle icon-engineer" id="corridor-role-icon"><i class="fa-solid fa-user-gear"></i></div>
-            <div>
-              <div class="role-banner-title">
-                <span id="corridor-role-title">Рабочее место: Рабочий линии</span>
-                <span class="status-pill pill-engineer" id="corridor-level-pill">Операционный уровень</span>
-              </div>
-              <div class="role-banner-desc" id="corridor-role-desc">
-                Каждый сотрудник видит только то, что относится к его зоне ответственности. Система связана единой цифровой нитью.
-              </div>
+        <!-- Worker Shift Banner -->
+        <div class="worker-header-banner">
+          <div>
+            <div class="worker-banner-title">
+              <i class="fa-solid fa-id-card-clip"></i>
+              <span id="worker-title-name">Рабочий стол: Иброхим Салимов (Оператор сборки)</span>
+            </div>
+            <div class="worker-banner-meta">
+              <span><i class="fa-solid fa-building"></i> <strong id="worker-dept-badge">Сборочный цех (WS-01)</strong></span>
+              <span><i class="fa-solid fa-clock"></i> 1-я смена (08:00 - 17:00)</span>
+              <span><i class="fa-solid fa-circle-check" style="color:#a7f3d0;"></i> Допуск открыт • Чек-лист 5S пройден</span>
             </div>
           </div>
-          <div class="role-banner-right">
-            <button type="button" class="btn-action-primary" style="background:#ef4444; border-color:#ef4444;" onclick="openAndonTriggerModal()">
-              <i class="fa-solid fa-bell"></i> 🚨 Andon: Сообщить о проблеме
-            </button>
+          <div>
+            <span class="badge-tag badge-green" style="font-size:14px; padding:8px 16px;">
+              🟢 На посту • Норматив выработки
+            </span>
           </div>
         </div>
 
-        <!-- 1. CORRIDOR SUB-VIEW: WORKER (РАБОЧИЙ ЛИНИИ) -->
-        <div id="corridor-view-worker" class="corridor-subview">
+        <!-- Worker 2-Column Grid -->
+        <div class="worker-grid-2">
           
-          <!-- Shift Assignment & Pre-Shift Checklist -->
-          <div class="worker-terminal-box">
-            <div class="worker-terminal-header">
-              <div>
-                <h3 style="font-size: 16px; font-weight: 800; color: var(--primary-navy);">
-                  <i class="fa-solid fa-clipboard-check" style="color: var(--primary-blue);"></i> Чек-лист начала смены & Стандарт 5S
-                </h3>
-                <p style="font-size: 12px; color: var(--text-muted);">
-                  Обязательная проверка перед включением конвейера и линии (стандарты GM BIQS)
-                </p>
-              </div>
-              <span class="badge-tag badge-blue">Смена: 1-я смена (08:00 - 17:00)</span>
-            </div>
-
-            <div class="worker-checklist-grid">
-              <label class="worker-check-item">
-                <input type="checkbox" checked> <span>5S: Рабочее место чистое, посторонние предметы убраны</span>
-              </label>
-              <label class="worker-check-item">
-                <input type="checkbox" checked> <span>Poka-Yoke: Оптические сенсоры и блокираторы исправны</span>
-              </label>
-              <label class="worker-check-item">
-                <input type="checkbox" checked> <span>Инструмент: Гайковёрт проверен, калибровка действительна</span>
-              </label>
-              <label class="worker-check-item">
-                <input type="checkbox" checked> <span>Комплектующие: Детали каркасов и салазок на посту</span>
-              </label>
-            </div>
-          </div>
-
-          <!-- Shift Production & Defect Input Form -->
-          <div class="card" style="margin-bottom: 24px; border: 2px solid #e2e8f0;">
-            <div class="card-title" style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px;">
-              <span><i class="fa-solid fa-pen-to-square" style="color: var(--accent-emerald);"></i> Форма оперативного ввода данных за смену (Digital Terminal)</span>
-              <span class="badge-tag badge-green">Быстрый ввод выработки</span>
-            </div>
-
-            <form id="form-worker-shift-input" class="modal-form" style="padding-top: 14px;">
-              <div class="form-row-3">
-                <div class="form-group">
-                  <label for="wsi-dept">Производственный цех</label>
-                  <select id="wsi-dept" class="form-input" onchange="onWorkerDeptChange()" required></select>
-                </div>
-                <div class="form-group">
-                  <label for="wsi-line">Линия / Пост сборки</label>
-                  <select id="wsi-line" class="form-input" required></select>
-                </div>
-                <div class="form-group">
-                  <label for="wsi-article">Артикул / Наименование узла</label>
-                  <input type="text" id="wsi-article" class="form-input" placeholder="Например: Спинка Cobalt 52109400" required>
-                </div>
-              </div>
-
-              <div class="form-row-3">
-                <div class="form-group">
-                  <label for="wsi-made"><i class="fa-solid fa-boxes-stacked"></i> Сколько сделал (Факт шт.):</label>
-                  <input type="number" id="wsi-made" class="form-input" style="font-size: 16px; font-weight: 700; color: var(--primary-navy);" min="0" placeholder="0" required>
-                </div>
-                <div class="form-group">
-                  <label for="wsi-defects"><i class="fa-solid fa-ban" style="color: var(--accent-danger);"></i> Какой брак (Кол-во шт.):</label>
-                  <input type="number" id="wsi-defects" class="form-input" style="font-size: 16px; font-weight: 700; color: var(--accent-danger);" min="0" placeholder="0" required>
-                </div>
-                <div class="form-group">
-                  <label for="wsi-reason">Причина брака (дефект):</label>
-                  <input type="text" id="wsi-reason" class="form-input" placeholder="Например: Недокрут болта, царапина, перекос">
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label for="wsi-breakdown"><i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-gold);"></i> Какая поломка / сбой оборудования (если была):</label>
-                <input type="text" id="wsi-breakdown" class="form-input" placeholder="Например: Закончились детали каркаса / Заедание направляющей конвейера">
-              </div>
-
-              <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between;">
-                <button type="submit" class="btn-action-primary btn-accent-emerald" style="padding: 12px 24px; font-size: 14px;">
-                  <i class="fa-solid fa-check"></i> Зафиксировать выработку и брак
-                </button>
-                <button type="button" class="btn-action-secondary" style="color: #ef4444; border-color: #fca5a5;" onclick="openAndonTriggerModal()">
-                  <i class="fa-solid fa-bell"></i> Срочный вызов наладчика (Andon)
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <!-- Worker Shift Logs Table -->
+          <!-- Column 1: Pre-Shift 5S Checklist -->
           <div class="card">
             <div class="card-title">
-              <span><i class="fa-solid fa-clock-rotate-left"></i> Журнал отчётов рабочего за смену</span>
-              <button class="btn-compact-tool" onclick="loadWorkerInputs()"><i class="fa-solid fa-rotate"></i> Обновить</button>
+              <span class="card-title-icon"><i class="fa-solid fa-clipboard-check" style="color:var(--accent-emerald);"></i> 1. Чек-лист начала смены & Стандарты 5S / SOS</span>
+              <span class="badge-tag badge-green">GM BIQS</span>
             </div>
-            <div class="table-responsive">
-              <table class="industrial-table">
-                <thead>
-                  <tr>
-                    <th>Время</th>
-                    <th>Участок / Линия</th>
-                    <th>Артикул узла</th>
-                    <th>Сделано (шт)</th>
-                    <th>Брак (шт)</th>
-                    <th>Причина брака</th>
-                    <th>Сбои оборудования</th>
-                  </tr>
-                </thead>
-                <tbody id="worker-inputs-rows">
-                  <!-- Populated via app.js -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2. CORRIDOR SUB-VIEW: CONTROLLER (КОНТРОЛЁР ОТК) -->
-        <div id="corridor-view-controller" class="corridor-subview hidden">
-          
-          <!-- Controller Quick Navigation Tabs -->
-          <div style="display: flex; gap: 10px; margin-bottom: 18px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">
-            <button type="button" class="filter-select active" id="btn-otk-tab-incoming" onclick="switchOtkSubTab('incoming')">
-              <i class="fa-solid fa-truck-ramp-box"></i> 1. Входной контроль сырья/металла
-            </button>
-            <button type="button" class="filter-select" id="btn-otk-tab-inprocess" onclick="switchOtkSubTab('inprocess')">
-              <i class="fa-solid fa-industry"></i> 2. Пооперационный контроль линий
-            </button>
-            <button type="button" class="filter-select" id="btn-otk-tab-redbox" onclick="switchOtkSubTab('redbox')">
-              <i class="fa-solid fa-box-archive"></i> 3. Лист дефектов & Red Box
-            </button>
-          </div>
-
-          <!-- OTK Subtab 1: Входной контроль -->
-          <div id="otk-pane-incoming" class="otk-pane">
-            <div class="card" style="margin-bottom: 20px;">
-              <div class="card-title">
-                <span><i class="fa-solid fa-truck-ramp-box" style="color: var(--primary-blue);"></i> Входной контроль сырья, металла и химии при поступлении на склад</span>
-                <button class="btn-action-primary btn-accent-blue" onclick="openIncomingModal()">+ Зарегистрировать входной контроль</button>
-              </div>
-              <div class="table-responsive">
-                <table class="industrial-table">
-                  <thead>
-                    <tr>
-                      <th>Дата</th>
-                      <th>Материал / Сырьё</th>
-                      <th>Поставщик</th>
-                      <th>Номер партии</th>
-                      <th>Выборка</th>
-                      <th>Брак</th>
-                      <th>Сертификат</th>
-                      <th>Вердикт ОТК</th>
-                      <th>Контролёр</th>
-                    </tr>
-                  </thead>
-                  <tbody id="incoming-inspection-rows"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- OTK Subtab 2: Пооперационный контроль линий -->
-          <div id="otk-pane-inprocess" class="otk-pane hidden">
-            <div class="card" style="margin-bottom: 20px;">
-              <div class="card-title">
-                <span><i class="fa-solid fa-magnifying-glass-chart"></i> Пооперационный контроль на линиях (сварка, штамповка, сборка, пошив)</span>
-                <button class="btn-action-primary" onclick="openNewAuditModal()">+ Запустить проверку поста</button>
-              </div>
-              <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
-                Контролёр проверяет: момент затяжки болтов М10 (карта SOS), глубину сварного шва, симметрию декоративной строчки, упругость пены ППУ. Любое несоответствие немедленно изолируется в Red Box.
-              </p>
-              <div id="inprocess-cards-grid" class="quality-tasks-grid"></div>
-            </div>
-          </div>
-
-          <!-- OTK Subtab 3: Лист дефектов и Red Box -->
-          <div id="otk-pane-redbox" class="otk-pane hidden">
-            <div class="card">
-              <div class="card-title">
-                <span><i class="fa-solid fa-box-archive" style="color: var(--accent-danger);"></i> Электронный лист дефектов и изоляция в Red Box (Разблокировка линий)</span>
-                <button class="btn-compact-tool" onclick="loadAndonFeed()"><i class="fa-solid fa-rotate"></i> Обновить</button>
-              </div>
-              <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
-                После завершения ремонта механиком, контролёр качества проверяет первую деталь (First Piece Inspection) и нажимает <strong>«Разблокировать линию»</strong>.
-              </p>
-              <div class="table-responsive">
-                <table class="industrial-table">
-                  <thead>
-                    <tr>
-                      <th>Тикет</th>
-                      <th>Линия</th>
-                      <th>Дефект / Ошибка</th>
-                      <th>Простой</th>
-                      <th>Отчёт механика</th>
-                      <th>Статус линии</th>
-                      <th>Действие контролёра</th>
-                    </tr>
-                  </thead>
-                  <tbody id="otk-redbox-rows"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- 3. CORRIDOR SUB-VIEW: QUALITY ENGINEER (ИНЖЕНЕР ПО КАЧЕСТВУ) -->
-        <div id="corridor-view-engineer" class="corridor-subview hidden">
-          
-          <div style="display: flex; gap: 10px; margin-bottom: 18px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">
-            <button type="button" class="filter-select active" id="btn-eng-tab-stats" onclick="switchEngSubTab('stats')">
-              <i class="fa-solid fa-chart-line"></i> 1. Анализ статистики брака
-            </button>
-            <button type="button" class="filter-select" id="btn-eng-tab-reclamations" onclick="switchEngSubTab('reclamations')">
-              <i class="fa-solid fa-car-burst"></i> 2. Рекламации автозавода (8D / 5-Why)
-            </button>
-            <button type="button" class="filter-select" id="btn-eng-tab-iso" onclick="switchEngSubTab('iso')">
-              <i class="fa-solid fa-award"></i> 3. Аудиты ISO / IATF 16949 / GM BIQS
-            </button>
-            <button type="button" class="filter-select" id="btn-eng-tab-report" onclick="switchEngSubTab('report')">
-              <i class="fa-solid fa-file-shield"></i> 4. Вечерний суточный рапорт
-            </button>
-          </div>
-
-          <!-- ENG Pane 1: Статистика брака -->
-          <div id="eng-pane-stats" class="eng-pane">
-            <div class="analytics-charts-grid">
-              <div class="chart-card">
-                <div class="chart-card-title"><i class="fa-solid fa-chart-pie"></i> Парето причин брака (дефекты по видам)</div>
-                <div class="chart-canvas-box" style="height: 220px;"><canvas id="chartDefectTypes"></canvas></div>
-              </div>
-              <div class="chart-card">
-                <div class="chart-card-title"><i class="fa-solid fa-chart-bar"></i> Уровень брака по цехам завода (%)</div>
-                <div class="chart-canvas-box" style="height: 220px;"><canvas id="chartScrapByDept"></canvas></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- ENG Pane 2: Рекламации автозавода -->
-          <div id="eng-pane-reclamations" class="eng-pane hidden">
-            <div class="card">
-              <div class="card-title">
-                <span><i class="fa-solid fa-car-burst" style="color: var(--accent-danger);"></i> Журнал рекламаций от автозавода (UzAuto Motors / Асака)</span>
-                <button class="btn-action-primary btn-accent-gold" onclick="openNewReclamationModal()">+ Зарегистрировать рекламацию</button>
-              </div>
-              <div class="table-responsive">
-                <table class="industrial-table">
-                  <thead>
-                    <tr>
-                      <th>Номер</th>
-                      <th>Дата</th>
-                      <th>Клиент / Завод</th>
-                      <th>Модель авто</th>
-                      <th>Артикул</th>
-                      <th>Дефект</th>
-                      <th>Анализ 5-Why / 8D</th>
-                      <th>Корректирующее действие</th>
-                      <th>Статус</th>
-                    </tr>
-                  </thead>
-                  <tbody id="reclamations-rows"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- ENG Pane 3: Аудиты ISO/BIQS -->
-          <div id="eng-pane-iso" class="eng-pane hidden">
-            <div class="card">
-              <div class="card-title">
-                <span><i class="fa-solid fa-award"></i> Аудиты процессов по стандартам IATF 16949 и GM BIQS</span>
-                <button class="btn-action-primary btn-accent-emerald" onclick="openNewAuditModal()">+ Провести аудит</button>
-              </div>
-              <div id="eng-audits-list" class="audits-grid"></div>
-            </div>
-          </div>
-
-          <!-- ENG Pane 4: Вечерний рапорт -->
-          <div id="eng-pane-report" class="eng-pane hidden">
-            <div class="card quality-report-card">
-              <div id="eng-evening-report-box"></div>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- 4. CORRIDOR SUB-VIEW: MECHANIC / REPAIR SERVICE (ОГМ) -->
-        <div id="corridor-view-mechanic" class="corridor-subview hidden">
-          <div class="card">
-            <div class="card-title">
-              <span><i class="fa-solid fa-screwdriver-wrench" style="color: var(--primary-blue);"></i> Ремонтно-механическая служба (ОГМ): Заявки на ремонт оборудования</span>
-              <span class="badge-tag badge-red">Мгновенный отклик Andon</span>
-            </div>
-            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-              При поломке станка механик оперативно выезжает на пост, выполняет ремонт, отписывается с указанием причины поломки и передает деталь контролёру ОТК.
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
+              Обязательная проверка рабочего места оператором перед пуском конвейера:
             </p>
-            <div class="table-responsive">
-              <table class="industrial-table">
-                <thead>
-                  <tr>
-                    <th>Тикет Andon</th>
-                    <th>Участок / Линия</th>
-                    <th>Код ошибки станка</th>
-                    <th>Описание сбоя</th>
-                    <th>Простой</th>
-                    <th>Статус</th>
-                    <th>Действие механика</th>
-                  </tr>
-                </thead>
-                <tbody id="mechanic-repair-rows"></tbody>
-              </table>
+
+            <div class="checklist-item-row">
+              <span class="checklist-label"><i class="fa-solid fa-broom" style="color:var(--accent-emerald);"></i> 1. Рабочее место 5S чистое, инструмент на подвесах</span>
+              <label class="switch"><input type="checkbox" id="chk-5s" checked onchange="onChecklistChange()"><span class="slider"></span></label>
             </div>
+
+            <div class="checklist-item-row">
+              <span class="checklist-label"><i class="fa-solid fa-eye" style="color:var(--primary-blue);"></i> 2. Poka-Yoke: Оптические сенсоры и защита исправны</span>
+              <label class="switch"><input type="checkbox" id="chk-poka" checked onchange="onChecklistChange()"><span class="slider"></span></label>
+            </div>
+
+            <div class="checklist-item-row">
+              <span class="checklist-label"><i class="fa-solid fa-wrench" style="color:var(--accent-amber);"></i> 3. Калибровка гайковёрта действительна (45±3 Н·м)</span>
+              <label class="switch"><input type="checkbox" id="chk-tool" checked onchange="onChecklistChange()"><span class="slider"></span></label>
+            </div>
+
+            <div class="checklist-item-row">
+              <span class="checklist-label"><i class="fa-solid fa-boxes-stacked" style="color:var(--accent-purple);"></i> 4. Комплектующие каркасов и метизы на посту в наличии</span>
+              <label class="switch"><input type="checkbox" id="chk-parts" checked onchange="onChecklistChange()"><span class="slider"></span></label>
+            </div>
+
+            <button type="button" class="btn-action-primary" style="width:100%; justify-content:center; margin-top:10px; background:#059669;" onclick="saveWorkerChecklist()">
+              <i class="fa-solid fa-floppy-disk"></i> Сохранить подтверждение чек-листа
+            </button>
+          </div>
+
+          <!-- Column 2: Big Red Andon Button & Emergency Stop -->
+          <div class="card" style="display:flex; flex-direction:column; justify-content:space-between; border:2px solid #fecaca; background:#fffdfd;">
+            <div>
+              <div class="card-title">
+                <span class="card-title-icon" style="color:var(--accent-danger);">
+                  <i class="fa-solid fa-triangle-exclamation"></i> Срочный вызов Andon при сбое
+                </span>
+                <span class="badge-tag badge-red">Мгновенный сигнал</span>
+              </div>
+              <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 16px;">
+                При остановке оборудования, поломке инструмента, нехватке деталей или обнаружении брака нажмите кнопку вызова. Наряд поступит ремонтникам ОГМ и мастеру немедленно.
+              </p>
+            </div>
+
+            <button type="button" class="btn-giant-andon" onclick="openAndonTriggerModal()">
+              <i class="fa-solid fa-bell fa-shake"></i>
+              <span>🚨 ВЫЗОВ ANDON: ОСТАНОВКА ЛИНИИ</span>
+            </button>
+          </div>
+
+        </div>
+
+        <!-- Shift Progress Bar -->
+        <div class="progress-card">
+          <div class="progress-header-row">
+            <span><i class="fa-solid fa-bars-progress" style="color:var(--primary-blue);"></i> Личный прогресс смены: <strong id="worker-line-target-text">Линия сборки Cobalt</strong></span>
+            <span id="worker-progress-percent">0 / 220 шт (0%)</span>
+          </div>
+          <div class="progress-track">
+            <div id="worker-progress-bar-fill" class="progress-fill-emerald" style="width: 0%;"></div>
           </div>
         </div>
 
-        <!-- 5. CORRIDOR SUB-VIEW: CHIEF ENERGY OFFICER (ОГЭ) -->
-        <div id="corridor-view-energy" class="corridor-subview hidden">
-          
-          <div class="executive-hero-grid" style="margin-bottom: 20px;">
-            <div class="executive-hero-card hero-card-blue">
-              <div class="executive-hero-label"><i class="fa-solid fa-bolt"></i> Электроэнергия</div>
-              <div class="executive-hero-val" id="oge-elec-val">3 420 кВт·ч</div>
-              <div class="executive-hero-sub">Расход за текущую смену</div>
-            </div>
-            <div class="executive-hero-card hero-card-amber">
-              <div class="executive-hero-label"><i class="fa-solid fa-fire-flame-simple"></i> Природный газ</div>
-              <div class="executive-hero-val" id="oge-gas-val">185 м³</div>
-              <div class="executive-hero-sub">Сушка каркасов и подогрев</div>
-            </div>
-            <div class="executive-hero-card hero-card-purple">
-              <div class="executive-hero-label"><i class="fa-solid fa-faucet-drip"></i> Промышленная вода</div>
-              <div class="executive-hero-val" id="oge-water-val">42 м³</div>
-              <div class="executive-hero-sub">Охлаждение сварки и быт</div>
-            </div>
-            <div class="executive-hero-card hero-card-emerald">
-              <div class="executive-hero-label"><i class="fa-solid fa-gauge-high"></i> Сжатый воздух</div>
-              <div class="executive-hero-val" id="oge-air-val">6.9 бар</div>
-              <div class="executive-hero-sub">Норма: 6.5 - 7.5 бар (Пневматика)</div>
-            </div>
+        <!-- Tactile Production Input Console -->
+        <div class="production-terminal-card card">
+          <div class="card-title" style="border-bottom: 2px solid var(--border-light); padding-bottom: 12px;">
+            <span class="card-title-icon">
+              <i class="fa-solid fa-calculator" style="color:var(--primary-blue);"></i>
+              <span>Оперативный терминал выработки (Digital Touch Console)</span>
+            </span>
+            <span class="badge-tag badge-blue">Быстрая фиксация выработки</span>
           </div>
 
-          <!-- Energy Department Action Cards -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-            <div class="card">
-              <div class="card-title">
-                <span><i class="fa-solid fa-pen"></i> Ввод планового и внепланового потребления ресурсов</span>
+          <form id="form-worker-shift-input" style="padding-top: 14px;">
+            <div class="form-row-3" style="margin-bottom: 18px;">
+              <div class="form-group">
+                <label for="wsi-dept"><i class="fa-solid fa-building"></i> Производственный цех</label>
+                <select id="wsi-dept" class="form-select form-input-no-icon" onchange="onWorkerDeptChange()" required></select>
               </div>
-              <form id="form-energy-record" class="modal-form">
-                <div class="form-row-2">
-                  <div class="form-group">
-                    <label for="inp-oge-elec">Электроэнергия (кВт·ч)</label>
-                    <input type="number" step="0.1" id="inp-oge-elec" class="form-input" value="3420" required>
-                  </div>
-                  <div class="form-group">
-                    <label for="inp-oge-gas">Газ (м³)</label>
-                    <input type="number" step="0.1" id="inp-oge-gas" class="form-input" value="185" required>
-                  </div>
-                </div>
-                <div class="form-row-2">
-                  <div class="form-group">
-                    <label for="inp-oge-water">Вода (м³)</label>
-                    <input type="number" step="0.1" id="inp-oge-water" class="form-input" value="42" required>
-                  </div>
-                  <div class="form-group">
-                    <label for="inp-oge-air">Давление воздуха (бар)</label>
-                    <input type="number" step="0.1" id="inp-oge-air" class="form-input" value="6.9" required>
-                  </div>
-                </div>
-                <button type="submit" class="btn-action-primary">
-                  <i class="fa-solid fa-floppy-disk"></i> Сохранить показания счетчиков
-                </button>
-              </form>
+              <div class="form-group">
+                <label for="wsi-line"><i class="fa-solid fa-industry"></i> Пост / Линия сборки</label>
+                <select id="wsi-line" class="form-select form-input-no-icon" required></select>
+              </div>
+              <div class="form-group">
+                <label for="wsi-article"><i class="fa-solid fa-tag"></i> Наименование узла / Артикул</label>
+                <input type="text" id="wsi-article" class="form-input form-input-no-icon" value="Спинка Cobalt 52109400" required>
+              </div>
             </div>
 
-            <!-- Emergency Signal Trigger -->
-            <div class="card" style="border: 2px solid #ef4444; background: #fffdfd;">
-              <div class="card-title">
-                <span style="color: #b91c1c;"><i class="fa-solid fa-triangle-exclamation"></i> Экстренный аварийный сигнал ОГЭ</span>
-                <span class="badge-tag badge-red">Мгновенный сигнал по заводу</span>
+            <!-- Tactile Units Counter -->
+            <div class="form-row-2" style="margin-bottom: 16px;">
+              <!-- Made Counter -->
+              <div class="counter-display-box">
+                <div class="counter-label-sub"><i class="fa-solid fa-boxes-stacked" style="color:var(--primary-blue);"></i> Сколько сделано годных узлов:</div>
+                <div class="counter-value-huge" id="worker-made-display">10</div>
+                <input type="hidden" id="wsi-made" value="10">
+                <div class="counter-buttons-row">
+                  <button type="button" class="btn-counter-tap" onclick="adjustWorkerUnits(-1)">-1</button>
+                  <button type="button" class="btn-counter-tap" onclick="adjustWorkerUnits(+1)">+1</button>
+                  <button type="button" class="btn-counter-tap" onclick="adjustWorkerUnits(+5)">+5</button>
+                  <button type="button" class="btn-counter-tap" onclick="adjustWorkerUnits(+10)">+10</button>
+                  <button type="button" class="btn-counter-tap" onclick="adjustWorkerUnits(+25)">+25</button>
+                </div>
               </div>
-              <p style="font-size: 13px; color: #475569; margin-bottom: 14px;">
-                Если произошла авария на линии энергоснабжения, подстанции или компрессорной станции, нажмите эту кнопку для оповещения всех цехов завода.
-              </p>
-              <button type="button" class="btn-emergency-oge" onclick="openEnergyAlertModal()">
-                <i class="fa-solid fa-tower-broadcast"></i> ОТПРАВИТЬ АВАРИЙНЫЙ СИГНАЛ В СИСТЕМУ
+
+              <!-- Defect Counter -->
+              <div class="counter-display-box" style="border-color:var(--accent-danger-border); background:#fffdfd;">
+                <div class="counter-label-sub" style="color:var(--accent-danger);"><i class="fa-solid fa-ban"></i> Обнаруженный брак (шт):</div>
+                <div class="counter-value-huge" id="worker-defects-display" style="color:var(--accent-danger);">0</div>
+                <input type="hidden" id="wsi-defects" value="0">
+                <div class="counter-buttons-row">
+                  <button type="button" class="btn-counter-tap" style="color:var(--accent-danger);" onclick="adjustWorkerDefects(-1)">-1</button>
+                  <button type="button" class="btn-counter-tap" style="color:var(--accent-danger); border-color:var(--accent-danger);" onclick="adjustWorkerDefects(+1)">+1 Брак</button>
+                </div>
+
+                <div class="defect-quick-tags">
+                  <span style="font-size:11px; font-weight:700; color:var(--text-muted); width:100%; text-align:left;">Быстрая причина брака:</span>
+                  <button type="button" class="btn-defect-tag" onclick="selectDefectTag('Недокрут болта SOS')">Недокрут болта</button>
+                  <button type="button" class="btn-defect-tag" onclick="selectDefectTag('Царапина обшивки')">Царапина</button>
+                  <button type="button" class="btn-defect-tag" onclick="selectDefectTag('Дефект сварного шва')">Сварной шов</button>
+                  <button type="button" class="btn-defect-tag" onclick="selectDefectTag('Пустоты пены ППУ')">Пена ППУ</button>
+                  <button type="button" class="btn-defect-tag" onclick="selectDefectTag('Перекос салазок')">Перекос салазок</button>
+                </div>
+                <input type="text" id="wsi-reason" class="form-input form-input-no-icon" placeholder="Причина брака (дефект)..." style="font-size:13px;">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="wsi-breakdown"><i class="fa-solid fa-triangle-exclamation" style="color:var(--accent-amber);"></i> Сбои станка, оборудования или задержки (если были):</label>
+              <input type="text" id="wsi-breakdown" class="form-input form-input-no-icon" placeholder="Например: Заедание роликов конвейера / Ожидание кронштейнов 5 минут...">
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px;">
+              <button type="submit" class="btn-action-primary" style="padding:14px 28px; font-size:15px; font-weight:800; background:var(--accent-emerald);">
+                <i class="fa-solid fa-circle-check"></i> Зафиксировать выработку в цифровом журнале
+              </button>
+              <button type="button" class="btn-action-secondary" onclick="openAndonTriggerModal()" style="color:var(--accent-danger); border-color:var(--accent-danger-border);">
+                <i class="fa-solid fa-bell"></i> Вызов наладчика
               </button>
             </div>
-          </div>
-
+          </form>
         </div>
 
-        <!-- 6. CORRIDOR SUB-VIEW: FACILITY (АХО) -->
-        <div id="corridor-view-facility" class="corridor-subview hidden">
-          <div class="card" style="margin-bottom: 20px;">
-            <div class="card-title">
-              <span><i class="fa-solid fa-broom" style="color: var(--primary-blue);"></i> Чек-листы обслуживания зданий и территории АХО</span>
-              <button class="btn-action-primary btn-accent-emerald" onclick="openFacilityChecklistModal()">+ Заполнить чек-лист АХО</button>
-            </div>
-            <div class="table-responsive">
-              <table class="industrial-table">
-                <thead>
-                  <tr>
-                    <th>Дата</th>
-                    <th>Инспектор АХО</th>
-                    <th>Чистота цехов</th>
-                    <th>Столовая (Саннормы)</th>
-                    <th>Охрана периметра</th>
-                    <th>Вывоз отходов</th>
-                    <th>Хоз. заявки (Закрыто/Всего)</th>
-                    <th>Отчёт инспектора</th>
-                  </tr>
-                </thead>
-                <tbody id="facility-checklists-rows"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-      </section>
-
-
-      <!-- ==================== MODULE: РАБОЧЕЕ МЕСТО БРИГАДИРА / МАСТЕРА ЦЕХА ==================== -->
-      <section id="section-master" class="module-section hidden">
-        <div class="module-header-row">
-          <div>
-            <h2 class="module-title">Рабочее место Бригадира / Мастера цеха</h2>
-            <p class="module-subtitle">Мониторинг показателей всей смены в реальном времени: план/факт, выработка, простои, открытые дефекты</p>
-          <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
-            <span style="font-size: 13px; font-weight: 700; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px;">
-              <i class="fa-solid fa-industry" style="color: var(--primary-blue);"></i> Производственный цех:
-            </span>
-            <select id="master-dept-filter" class="form-select" style="width: auto; min-width: 280px; padding: 6px 12px; font-size: 13px; font-weight: 600; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff;" onchange="loadMasterDashboard(this.value)">
-              <option value="ws-assembly">Сборочный цех сидений (ws-assembly)</option>
-              <option value="ws-welding">Сварочный цех металлокаркасов (ws-welding)</option>
-              <option value="ws-stamping">Штамповочный цех (ws-stamping)</option>
-              <option value="ws-sewing">Цех пошива и чехлов (ws-sewing)</option>
-              <option value="ws-foam">Цех пенополиуретана ППУ (ws-foam)</option>
-            </select>
-          </div>
-
-          </div>
-          <div class="module-header-actions">
-            <button class="btn-action-primary btn-accent-gold" onclick="openSubmitShiftReportModal()">
-              <i class="fa-solid fa-file-signature"></i> Сдать сменный рапорт цеха
-            </button>
-            <button class="btn-action-primary" style="background:#ef4444; border-color:#ef4444;" onclick="openAndonTriggerModal()">
-              <i class="fa-solid fa-bell"></i> Вызов Andon
-            </button>
-          </div>
-        </div>
-
-        <!-- Master Shift Counters -->
-        <div class="kpi-counters-grid">
-          <div class="kpi-card">
-            <div class="kpi-icon-box kpi-blue"><i class="fa-solid fa-cubes"></i></div>
-            <div class="kpi-data">
-              <div id="master-plan-val" class="kpi-num">0 шт</div>
-              <div class="kpi-title">Сменный план (шт)</div>
-            </div>
-          </div>
-
-          <div class="kpi-card">
-            <div class="kpi-icon-box kpi-green"><i class="fa-solid fa-circle-check"></i></div>
-            <div class="kpi-data">
-              <div id="master-fact-val" class="kpi-num">0 шт</div>
-              <div class="kpi-title">Фактическая выработка</div>
-            </div>
-          </div>
-
-          <div class="kpi-card">
-            <div class="kpi-icon-box kpi-red"><i class="fa-solid fa-ban"></i></div>
-            <div class="kpi-data">
-              <div id="master-scrap-val" class="kpi-num">0 шт</div>
-              <div class="kpi-title">Отбраковано (Red Box)</div>
-            </div>
-          </div>
-
-          <div class="kpi-card">
-            <div class="kpi-icon-box kpi-amber"><i class="fa-solid fa-clock"></i></div>
-            <div class="kpi-data">
-              <div id="master-downtime-val" class="kpi-num">0 мин</div>
-              <div class="kpi-title">Простои смены</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Lines Shift Progress Table -->
-        <div class="card" style="margin-top: 20px;">
+        <!-- Worker Shift Records Log Table -->
+        <div class="card">
           <div class="card-title">
-            <span><i class="fa-solid fa-bars-progress"></i> Показатели производственных линий цеха в реальном времени</span>
+            <span class="card-title-icon"><i class="fa-solid fa-clock-rotate-left"></i> Журнал отчётов рабочего за смену</span>
+            <button class="btn-compact-tool" onclick="loadWorkerInputs()"><i class="fa-solid fa-rotate"></i> Обновить</button>
           </div>
           <div class="table-responsive">
             <table class="industrial-table">
               <thead>
                 <tr>
-                  <th>Линия сборки / Пост</th>
-                  <th>Изделие</th>
-                  <th>План смены</th>
-                  <th>Факт смены</th>
-                  <th>Процент выполнения</th>
+                  <th>Время</th>
+                  <th>Пост / Линия</th>
+                  <th>Артикул узла</th>
+                  <th>Сделано (шт)</th>
                   <th>Брак (шт)</th>
-                  <th>Простой (мин)</th>
-                  <th>Состояние</th>
+                  <th>Причина брака</th>
+                  <th>Сбои оборудования</th>
                 </tr>
               </thead>
-              <tbody id="master-lines-progress-rows"></tbody>
+              <tbody id="worker-inputs-rows">
+                <!-- Populated via JS -->
+              </tbody>
             </table>
           </div>
         </div>
+
       </section>
 
 
-      <!-- ==================== MODULE: ЛЕНТА СОБЫТИЙ ANDON & АЛЕРТЫ ==================== -->
-      <section id="section-andon" class="module-section hidden">
-        <div class="module-header-row">
+      <!-- ==================== 2. РАБОЧИЙ СТОЛ НАЧАЛЬНИКА ЦЕХА ==================== -->
+      <section id="section-master" class="workspace-section hidden">
+        
+        <!-- Workshop Master Header with Shop Selector -->
+        <div class="master-dept-header">
           <div>
-            <h2 class="module-title">Лента событий Andon & Алерты завода</h2>
-            <p class="module-subtitle">Общая лента проблем, остановок линий и мгновенного оповещения служб в реальном времени</p>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <h2 style="font-size: 22px; font-weight: 900;" id="master-shop-title">Сборочный цех автомобильных сидений</h2>
+              <span class="badge-tag badge-green" id="master-shop-code-badge">WS-01</span>
+            </div>
+            <div style="font-size: 13px; color: #cbd5e1; margin-top: 6px;" id="master-shop-head-info">
+              Начальник цеха: Карим Азизов | GM BIQS Стандарт: 96.8% | Смена: 1-я смена
+            </div>
           </div>
-          <div class="module-header-actions">
-            <button class="btn-action-primary" style="background:#ef4444; border-color:#ef4444;" onclick="openAndonTriggerModal()">
-              <i class="fa-solid fa-bell"></i> + Зафиксировать проблему на линии
-            </button>
-          </div>
-        </div>
 
-        <!-- Filter bar -->
-        <div class="filter-panel">
-          <div class="filter-group">
-            <label for="filter-andon-dept"><i class="fa-solid fa-building"></i> Цех/Подразделение:</label>
-            <select id="filter-andon-dept" class="filter-select" onchange="loadAndonFeed()">
-              <option value="all">Все цеха (Сводный вид)</option>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <label style="font-size:12px; font-weight:700; color:#cbd5e1;">Переключить цех:</label>
+            <select id="master-dept-filter" class="master-dept-picker-select" onchange="onMasterDeptChange(this.value)">
+              <option value="ws-assembly">Сборочный цех сидений (WS-01)</option>
+              <option value="ws-welding">Сварочный цех металлокаркасов (WS-02)</option>
+              <option value="ws-stamping">Штамповочный цех деталей (WS-06)</option>
+              <option value="ws-foam">Цех пенополиуретана ППУ (WS-03)</option>
+              <option value="ws-sewing">Цех пошива и чехлов (WS-04)</option>
+              <option value="ws-quality">Служба качества ОТК (WS-05)</option>
+              <option value="ws-energy">Служба главного энергетика (WS-07)</option>
+              <option value="ws-mechanic">Служба главного механика ОГМ (WS-08)</option>
+              <option value="ws-facility">АХО и территория (WS-09)</option>
             </select>
-          </div>
-        </div>
 
-        <!-- Andon Events Grid -->
-        <div id="andon-feed-container" class="andon-events-grid"></div>
-      </section>
-
-
-      <!-- ==================== MODULE: СМЕННЫЕ ЦИФРОВЫЕ РАПОРТЫ ЦЕХОВ ==================== -->
-      <section id="section-shift-reports" class="module-section hidden">
-        <div class="module-header-row">
-          <div>
-            <h2 class="module-title">Сменные цифровые рапорты цехов завода</h2>
-            <p class="module-subtitle">Электронная сдача сменных отчётов: план, факт, брак, простои и Kaizen-предложения</p>
-          </div>
-          <div class="module-header-actions">
-            <button class="btn-action-primary btn-accent-gold" onclick="openSubmitShiftReportModal()">
-              <i class="fa-solid fa-plus"></i> Сдать сменный рапорт
+            <button type="button" class="btn-action-primary" style="background:var(--accent-amber); color:#0f172a; font-weight:800;" onclick="openSubmitShiftReportModal()">
+              <i class="fa-solid fa-file-signature"></i> Сдать сменный рапорт
             </button>
           </div>
         </div>
 
-        <!-- Shift Reports Grid -->
-        <div id="shift-reports-container" class="shift-reports-grid"></div>
-      </section>
-
-
-      <!-- ==================== MODULE: ДАШБОРД ГЕНЕРАЛЬНОГО ДИРЕКТОРА (EXECUTIVE BI) ==================== -->
-      <section id="section-executive" class="module-section hidden">
-        <div class="module-header-row">
-          <div>
-            <h2 class="module-title">Дашборд Генерального директора (Executive BI)</h2>
-            <p class="module-subtitle">Верхнеуровневая аналитика завода одной цифрой: общий выпуск, процент брака, OEE, загрузка и эскалация</p>
+        <!-- Master 4 KPI Counters Grid -->
+        <div class="kpi-counters-grid">
+          <div class="kpi-card">
+            <div class="kpi-icon-box kpi-blue"><i class="fa-solid fa-cubes"></i></div>
+            <div>
+              <div id="master-plan-val" class="kpi-num">500 шт</div>
+              <div class="kpi-title">Сменный план цеха</div>
+            </div>
           </div>
-          <div class="module-header-actions">
-            <button class="btn-compact-tool" onclick="loadExecutiveBI()"><i class="fa-solid fa-rotate"></i> Обновить данные BI</button>
+
+          <div class="kpi-card">
+            <div class="kpi-icon-box kpi-green"><i class="fa-solid fa-circle-check"></i></div>
+            <div>
+              <div id="master-fact-val" class="kpi-num">485 шт</div>
+              <div class="kpi-title">Фактический выпуск (<span id="master-rate-val">97.0%</span>)</div>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-icon-box kpi-red"><i class="fa-solid fa-ban"></i></div>
+            <div>
+              <div id="master-scrap-val" class="kpi-num">3 шт</div>
+              <div class="kpi-title">Брак цеха (Red Box)</div>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-icon-box kpi-amber"><i class="fa-solid fa-clock"></i></div>
+            <div>
+              <div id="master-downtime-val" class="kpi-num">14 мин</div>
+              <div class="kpi-title">Простои оборудования</div>
+            </div>
           </div>
         </div>
 
-        <!-- 30-MIN ESCALATION RED ALERT BANNER -->
+        <!-- Lines Real-Time Monitor Table -->
+        <div class="card">
+          <div class="card-title">
+            <span class="card-title-icon"><i class="fa-solid fa-bars-progress" style="color:var(--primary-blue);"></i> Мониторинг производственных линий цеха в реальном времени</span>
+            <button class="btn-compact-tool" onclick="loadMasterDashboard()"><i class="fa-solid fa-rotate"></i> Обновить</button>
+          </div>
+          <div class="table-responsive">
+            <table class="industrial-table">
+              <thead>
+                <tr>
+                  <th>Линия / Пост</th>
+                  <th>Назначение</th>
+                  <th>Сменный план</th>
+                  <th>Факт смены</th>
+                  <th>Выполнение (%)</th>
+                  <th>Брак (шт)</th>
+                  <th>Простой</th>
+                  <th>Состояние</th>
+                </tr>
+              </thead>
+              <tbody id="master-lines-progress-rows">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Active Andon Issues in this Workshop -->
+        <div class="card">
+          <div class="card-title">
+            <span class="card-title-icon"><i class="fa-solid fa-bell" style="color:var(--accent-danger);"></i> Активные инциденты Andon в данном цехе</span>
+            <span class="badge-tag badge-red" id="master-issues-badge">0 инцидентов</span>
+          </div>
+          <div id="master-active-issues-box">
+            <p style="color:var(--text-muted); font-size:13px;">Все линии цеха работают в штатном режиме.</p>
+          </div>
+        </div>
+
+        <!-- Shift Report Status for this Workshop -->
+        <div class="card">
+          <div class="card-title">
+            <span class="card-title-icon"><i class="fa-solid fa-file-shield" style="color:var(--accent-emerald);"></i> Статус сменного рапорта начальника цеха</span>
+            <span class="badge-tag badge-blue" id="master-report-status-badge">Сдан мастером</span>
+          </div>
+          <div id="master-report-summary-box" style="font-size:13px; color:var(--text-secondary); line-height:1.6;">
+            Рапорт за текущую смену сдан. Ожидает визирования и утверждения Директоратом завода.
+          </div>
+        </div>
+
+      </section>
+
+
+      <!-- ==================== 3. РАБОЧИЙ СТОЛ ГЕНЕРАЛЬНОГО ДИРЕКТОРА ==================== -->
+      <section id="section-director" class="workspace-section hidden">
+        
+        <!-- Director Executive Header -->
+        <div class="director-header-banner">
+          <div>
+            <div style="font-size: 22px; font-weight: 900; display:flex; align-items:center; gap:10px;">
+              <i class="fa-solid fa-chart-line" style="color:#60a5fa;"></i>
+              <span>Сводный монитор завода: Генеральный директор (Executive BI)</span>
+            </div>
+            <div style="font-size: 13px; color: #94a3b8; margin-top: 4px;">
+              Полный контроль всех 9 цехов завода в реальном времени: выпуск, качество, OEE, энергобаланс и финансовые потери
+            </div>
+          </div>
+          <div>
+            <button class="btn-action-primary" style="background:#1e293b; border:1px solid rgba(255,255,255,0.2);" onclick="loadExecutiveBI()">
+              <i class="fa-solid fa-rotate"></i> <span>Синхронизировать данные BI</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 30-min Critical Escalation Red Alert Banner -->
         <div id="director-escalation-alert-box" class="escalation-director-alert hidden">
           <div class="escalation-alert-left">
             <div class="escalation-alert-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
             <div>
-              <div class="escalation-alert-title" id="escalation-banner-title">КРИТИЧЕСКАЯ ЭСКАЛАЦИЯ ДИРЕКТОРУ: Простой линии более 30 минут!</div>
-              <div class="escalation-alert-desc" id="escalation-banner-desc">Зависший отдел: ОГМ / Ремонтная служба. Причина: Ожидание датчика инвертора. Линия: Сварочный робот Tracker.</div>
+              <div class="escalation-alert-title" id="escalation-banner-title">🚨 КРИТИЧЕСКАЯ ЭСКАЛАЦИЯ ДИРЕКТОРУ: Простой линии более 30 минут!</div>
+              <div class="escalation-alert-desc" id="escalation-banner-desc">Линия: Сварочный комплекс Cobalt. Зависший отдел: ОГМ / Ремонтники. Дефект: Сбой инвертора.</div>
             </div>
           </div>
-          <div class="escalation-alert-badge" id="escalation-banner-time">Простой: 38 минут</div>
+          <div class="escalation-alert-badge" id="escalation-banner-time">Простой: 38 мин</div>
         </div>
 
-        <!-- Headline Top KPI Tiles (Большие цифры) -->
+        <!-- 4 Big Executive KPI Hero Tiles -->
         <div class="executive-hero-grid">
-          
-          <!-- 1. Общий выпуск продукции ОДНОЙ ЦИФРОЙ -->
+          <!-- 1. Total Output -->
           <div class="executive-hero-card hero-card-blue">
             <div class="executive-hero-label">
               <span>Общий выпуск завода</span>
-              <span class="badge-tag badge-blue" id="bi-prod-rate">0.0%</span>
+              <span class="badge-tag badge-blue" id="bi-prod-rate">98.2%</span>
             </div>
-            <div class="executive-hero-val" id="bi-total-production">0 шт.</div>
-            <div class="executive-hero-sub" id="bi-prod-plan-sub">Синхронизация плана завода...</div>
+            <div class="executive-hero-val" id="bi-total-production">2 603 шт.</div>
+            <div class="executive-hero-sub" id="bi-prod-plan-sub">План завода: 2 652 комплектов сидений</div>
           </div>
 
-          <!-- 2. Общий процент брака завода -->
+          <!-- 2. Defect Rate -->
           <div class="executive-hero-card hero-card-red">
             <div class="executive-hero-label">
               <span>Общий процент брака</span>
-              <span class="badge-tag badge-red" id="bi-ppm-badge">0 PPM</span>
+              <span class="badge-tag badge-red" id="bi-ppm-badge">4 225 PPM</span>
             </div>
-            <div class="executive-hero-val" id="bi-defect-rate">0.00%</div>
+            <div class="executive-hero-val" id="bi-defect-rate" style="color:var(--accent-danger);">0.42%</div>
             <div class="executive-hero-sub" id="bi-scrap-units-sub">Всего 11 отбракованных узлов изолировано</div>
           </div>
 
-          <!-- 3. OEE Оборудования -->
+          <!-- 3. Overall OEE -->
           <div class="executive-hero-card hero-card-purple">
             <div class="executive-hero-label">
               <span>OEE Оборудования завода</span>
               <span class="badge-tag badge-purple">Мировой класс</span>
             </div>
-            <div class="executive-hero-val" id="bi-oee-val">—%</div>
+            <div class="executive-hero-val" id="bi-oee-val">89.4%</div>
             <div class="oee-breakdown-row">
-              <div class="oee-factor">
-                <div class="oee-factor-num" id="bi-oee-avail">—%</div>
+              <div>
+                <div class="oee-factor-num" id="bi-oee-avail">96.2%</div>
                 <div class="oee-factor-lbl">Доступность</div>
               </div>
-              <div class="oee-factor">
-                <div class="oee-factor-num" id="bi-oee-perf">—%</div>
+              <div>
+                <div class="oee-factor-num" id="bi-oee-perf">98.2%</div>
                 <div class="oee-factor-lbl">Производ-сть</div>
               </div>
-              <div class="oee-factor">
-                <div class="oee-factor-num" id="bi-oee-qual">—%</div>
+              <div>
+                <div class="oee-factor-num" id="bi-oee-qual">94.6%</div>
                 <div class="oee-factor-lbl">Качество</div>
               </div>
             </div>
           </div>
 
-          <!-- 4. Финансовые потери от брака и простоев -->
+          <!-- 4. Financial Loss -->
           <div class="executive-hero-card hero-card-amber">
             <div class="executive-hero-label">
               <span>Финансовые потери</span>
-              <span class="badge-tag badge-amber" id="bi-loss-usd">$0 USD</span>
+              <span class="badge-tag badge-amber" id="bi-loss-usd">$845 USD</span>
             </div>
-            <div class="executive-hero-val" id="bi-total-loss">0.00 млн сум</div>
-            <div class="executive-hero-sub">Расчёт потерь от брака и простоев...</div>
+            <div class="executive-hero-val" id="bi-total-loss" style="color:var(--accent-amber);">10.82 млн сум</div>
+            <div class="executive-hero-sub">Потери от брака и времени простоев</div>
           </div>
-
         </div>
 
-        <!-- Factory Bottlenecks Ranking Table -->
-        <div class="card" style="margin-top: 24px;">
+        <!-- 4 INTERACTIVE CHARTS FOR THE DIRECTOR -->
+        <div class="analytics-charts-grid-4">
+          <!-- Chart 1: Hourly Production Dynamics -->
+          <div class="chart-card">
+            <div class="chart-card-title">
+              <span><i class="fa-solid fa-chart-line" style="color:var(--primary-blue);"></i> 1. Динамика выпуска завода по часам смены (План vs Факт)</span>
+              <span class="badge-tag badge-blue">Почасовой темп</span>
+            </div>
+            <div class="chart-canvas-box">
+              <canvas id="chartHourlyProduction"></canvas>
+            </div>
+          </div>
+
+          <!-- Chart 2: Output by Workshops -->
+          <div class="chart-card">
+            <div class="chart-card-title">
+              <span><i class="fa-solid fa-chart-simple" style="color:var(--accent-emerald);"></i> 2. Выработка и загрузка производственных цехов</span>
+              <span class="badge-tag badge-green">Сравнение цехов</span>
+            </div>
+            <div class="chart-canvas-box">
+              <canvas id="chartWorkshopOutput"></canvas>
+            </div>
+          </div>
+
+          <!-- Chart 3: Defect Pareto Distribution -->
+          <div class="chart-card">
+            <div class="chart-card-title">
+              <span><i class="fa-solid fa-chart-pie" style="color:var(--accent-danger);"></i> 3. Структура брака завода (Парето дефектов)</span>
+              <span class="badge-tag badge-red">Виды дефектов</span>
+            </div>
+            <div class="chart-canvas-box">
+              <canvas id="chartDefectPareto"></canvas>
+            </div>
+          </div>
+
+          <!-- Chart 4: Downtime Analysis by Causes -->
+          <div class="chart-card">
+            <div class="chart-card-title">
+              <span><i class="fa-solid fa-stopwatch" style="color:var(--accent-amber);"></i> 4. Анализ причин простоев оборудования (Downtime)</span>
+              <span class="badge-tag badge-amber">В минутах</span>
+            </div>
+            <div class="chart-canvas-box">
+              <canvas id="chartDowntimeReasons"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Factory Floor Live Map (All 9 Departments) -->
+        <div class="card">
           <div class="card-title">
-            <span><i class="fa-solid fa-filter-circle-xmark" style="color: var(--accent-danger);"></i> Анализ узких мест завода (Bottlenecks / Рейтинг цехов по простоям и браку)</span>
+            <span class="card-title-icon"><i class="fa-solid fa-network-wired" style="color:var(--primary-blue);"></i> Интерактивная карта состояния всех 9 цехов завода</span>
+            <span style="font-size:12px; color:var(--text-muted); font-weight:600;">Кликните на карточку цеха для перехода к его детальному виду</span>
+          </div>
+          <div id="factory-floors-grid" class="factory-floors-grid">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <!-- Bottlenecks Ranking Table -->
+        <div class="card">
+          <div class="card-title">
+            <span class="card-title-icon"><i class="fa-solid fa-filter-circle-xmark" style="color:var(--accent-danger);"></i> Анализ узких мест завода (Рейтинг цехов по простоям и браку)</span>
+            <span class="badge-tag badge-red">Bottlenecks</span>
           </div>
           <div class="table-responsive">
             <table class="industrial-table">
@@ -1016,133 +786,107 @@
                   <th>Факт смены</th>
                   <th>Выполнение</th>
                   <th>Брак (шт)</th>
-                  <th>Время простоя</th>
-                  <th>Статус участка</th>
+                  <th>Простои (мин)</th>
+                  <th>Состояние</th>
                 </tr>
               </thead>
-              <tbody id="bi-bottlenecks-rows"></tbody>
+              <tbody id="bi-bottlenecks-rows">
+                <!-- Populated via JS -->
+              </tbody>
             </table>
           </div>
         </div>
 
       </section>
 
-      <!-- ==================== MODULE 5: ЕЖЕДНЕВНЫЕ ПЛАНЫ КАЧЕСТВА (ОТК) ==================== -->
-      <section id="section-mod5" class="module-section hidden">
-        <div class="module-header-row">
+
+      <!-- ==================== 4. ЛЕНТА СОБЫТИЙ ANDON ==================== -->
+      <section id="section-andon" class="workspace-section hidden">
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
           <div>
-            <h2 class="module-title">Планы и задания службы качества (ОТК & BIQS)</h2>
-            <p class="module-subtitle">Раздельный контроль инженеров и контролёров, вечерние рапорты и визирование Директоратом</p>
+            <h2 style="font-size:18px; font-weight:800;"><i class="fa-solid fa-tower-broadcast" style="color:var(--accent-danger);"></i> Общезаводская лента событий Andon</h2>
+            <p style="font-size:13px; color:var(--text-muted);">Мгновенное оповещение ремонтников ОГМ, службы ОТК и руководства об остановках линий</p>
           </div>
-          <div class="module-header-actions">
-            <div class="quality-date-filter-group">
-              <input type="date" id="quality-plan-date-input" class="form-input-compact" onchange="loadDailyQualityTasks()">
-            </div>
-            <button class="btn-action-primary btn-accent-blue" onclick="openCreateQualityTaskModal()">+ Выдать задание на день</button>
-          </div>
-        </div>
-
-        <div class="quality-tabs-bar">
-          <button type="button" id="tab-btn-engineers" class="quality-tab-btn active" onclick="switchQualityTab('engineers')">
-            <i class="fa-solid fa-user-gear"></i> Задания Инженеров качества
-          </button>
-          <button type="button" id="tab-btn-controllers" class="quality-tab-btn" onclick="switchQualityTab('controllers')">
-            <i class="fa-solid fa-clipboard-check"></i> Задания Контролёров ОТК
-          </button>
-          <button type="button" id="tab-btn-report" class="quality-tab-btn" onclick="switchQualityTab('report')">
-            <i class="fa-solid fa-file-shield"></i> Итоговый суточный рапорт
+          <button type="button" class="btn-action-primary" style="background:var(--accent-danger);" onclick="openAndonTriggerModal()">
+            <i class="fa-solid fa-bell"></i> + Подать сигнал Andon
           </button>
         </div>
 
-        <div id="quality-subtab-engineers" class="quality-subtab-pane">
-          <div id="engineers-tasks-container" class="quality-tasks-grid"></div>
-        </div>
-        <div id="quality-subtab-controllers" class="quality-subtab-pane hidden">
-          <div id="controllers-tasks-container" class="quality-tasks-grid"></div>
-        </div>
-        <div id="quality-subtab-report" class="quality-subtab-pane hidden">
-          <div class="card quality-report-card">
-            <div id="evening-report-content"></div>
-          </div>
+        <div id="andon-feed-container" class="andon-events-grid">
+          <!-- Populated via JS -->
         </div>
       </section>
 
-      <!-- ==================== MODULE 2: BIQS АУДИТЫ КАЧЕСТВА ==================== -->
-      <section id="section-mod2" class="module-section hidden">
-        <div class="module-header-row">
+
+      <!-- ==================== 5. СМЕННЫЕ ЦИФРОВЫЕ РАПОРТЫ ==================== -->
+      <section id="section-shift_reports" class="workspace-section hidden">
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
           <div>
-            <h2 class="module-title">Аудиты качества и соблюдение стандартов BIQS</h2>
-            <p class="module-subtitle">Обходы производственных участков с проверкой чек-листов GM BIQS и опросом рабочих</p>
+            <h2 style="font-size:18px; font-weight:800;"><i class="fa-solid fa-file-invoice" style="color:var(--accent-amber);"></i> Сменные цифровые рапорты цехов завода</h2>
+            <p style="font-size:13px; color:var(--text-muted);">Электронная сдача рапортов, визирование начальниками цехов и утверждение Генеральным директором</p>
           </div>
-          <div class="module-header-actions">
-            <button class="btn-action-primary btn-accent-emerald" onclick="openNewAuditModal()">+ Провести новый аудит</button>
-          </div>
+          <button type="button" class="btn-action-primary" style="background:var(--accent-amber); color:#0f172a; font-weight:800;" onclick="openSubmitShiftReportModal()">
+            <i class="fa-solid fa-plus"></i> Сдать сменный рапорт
+          </button>
         </div>
-        <div id="audits-list-container" class="audits-grid"></div>
+
+        <div id="shift-reports-container" class="shift-reports-grid">
+          <!-- Populated via JS -->
+        </div>
       </section>
 
-      <!-- ==================== MODULE 4: АДМИН ПАНЕЛЬ ==================== -->
-      <section id="section-mod4" class="module-section hidden">
-        <div class="module-header-row">
+
+      <!-- ==================== 6. СТАНДАРТЫ BIQS И АУДИТЫ ==================== -->
+      <section id="section-biqs" class="workspace-section hidden">
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
           <div>
-            <h2 class="module-title">Панель Главного Администратора</h2>
-            <p class="module-subtitle">Управление инвайт-кодами, пользователями, линиями и системными логами</p>
+            <h2 style="font-size:18px; font-weight:800;"><i class="fa-solid fa-clipboard-check" style="color:var(--accent-emerald);"></i> Аудиты процессов и стандарты GM BIQS</h2>
+            <p style="font-size:13px; color:var(--text-muted);">Многоуровневые аудиты качества на сборочных постах и оценка знаний операторов</p>
           </div>
-          <div class="module-header-actions">
-            <button class="btn-action-primary btn-accent-gold" onclick="openCreateKeyModal()">+ Создать инвайт-код</button>
-          </div>
+          <button type="button" class="btn-action-primary" style="background:var(--accent-emerald);" onclick="openNewAuditModal()">
+            <i class="fa-solid fa-plus"></i> Провести аудит BIQS
+          </button>
         </div>
 
-        <div style="display: flex; gap: 12px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">
-          <button type="button" id="admin-tab-btn-keys" class="filter-select active" onclick="switchAdminSubTab('keys')">Инвайт-коды</button>
-          <button type="button" id="admin-tab-btn-lines" class="filter-select" onclick="switchAdminSubTab('lines')">Линии сборки</button>
-          <button type="button" id="admin-tab-btn-users" class="filter-select" onclick="switchAdminSubTab('users')">Учетные записи</button>
-          <button type="button" id="admin-tab-btn-logs" class="filter-select" onclick="switchAdminSubTab('logs')">Системные логи</button>
+        <div id="audits-list-container" class="andon-events-grid">
+          <!-- Populated via JS -->
         </div>
+      </section>
 
-        <div id="admin-subtab-keys" class="admin-subtab">
-          <div class="card">
-            <div class="table-responsive">
-              <table class="industrial-table">
-                <thead>
-                  <tr><th>Код</th><th>Роль</th><th>Цех</th><th>Использовано</th><th>Статус</th><th>Заметка</th><th>Действие</th></tr>
-                </thead>
-                <tbody id="invite-keys-rows"></tbody>
-              </table>
-            </div>
+
+      <!-- ==================== 7. АДМИНИСТРАТИВНАЯ ПАНЕЛЬ ==================== -->
+      <section id="section-admin" class="workspace-section hidden">
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+          <div>
+            <h2 style="font-size:18px; font-weight:800;"><i class="fa-solid fa-shield-halved" style="color:#0f172a;"></i> Панель Главного Администратора</h2>
+            <p style="font-size:13px; color:var(--text-muted);">Управление инвайт-кодами, пользователями, линиями и аудит системных логов</p>
           </div>
+          <button type="button" class="btn-action-primary" onclick="openCreateKeyModal()">
+            <i class="fa-solid fa-key"></i> + Создать инвайт-код
+          </button>
         </div>
 
-        <div id="admin-subtab-lines" class="admin-subtab hidden">
-          <div class="card">
-            <div class="table-responsive">
-              <table class="industrial-table">
-                <thead><tr><th>Цех</th><th>Линия</th><th>Описание</th><th>Состояние</th></tr></thead>
-                <tbody id="admin-lines-rows"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <div id="admin-subtab-users" class="admin-subtab hidden">
-          <div class="card">
-            <div class="table-responsive">
-              <table class="industrial-table">
-                <thead><tr><th>Логин</th><th>ФИО</th><th>Роль</th><th>Цех</th><th>Статус</th></tr></thead>
-                <tbody id="admin-users-rows"></tbody>
-              </table>
-            </div>
+        <div class="card">
+          <div class="card-title"><span>Инвайт-коды доступа</span></div>
+          <div class="table-responsive">
+            <table class="industrial-table">
+              <thead>
+                <tr><th>Код</th><th>Роль</th><th>Цех</th><th>Использовано</th><th>Статус</th><th>Заметка</th><th>Действие</th></tr>
+              </thead>
+              <tbody id="invite-keys-rows"></tbody>
+            </table>
           </div>
         </div>
 
-        <div id="admin-subtab-logs" class="admin-subtab hidden">
-          <div class="card">
-            <div class="table-responsive">
-              <table class="industrial-table">
-                <thead><tr><th>Время</th><th>Пользователь</th><th>Действие</th><th>Подробности</th></tr></thead>
-                <tbody id="admin-logs-rows"></tbody>
-              </table>
-            </div>
+        <div class="card">
+          <div class="card-title"><span>Журнал действий в системе (Audit Logs)</span></div>
+          <div class="table-responsive">
+            <table class="industrial-table">
+              <thead>
+                <tr><th>Время</th><th>Пользователь</th><th>Действие</th><th>Подробности</th></tr>
+              </thead>
+              <tbody id="admin-logs-rows"></tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -1158,43 +902,43 @@
     <div class="modal-card modal-card-wide">
       <button class="modal-close" onclick="closeModal('modal-andon-trigger')"><i class="fa-solid fa-xmark"></i></button>
       <h3 class="modal-header-title">
-        <i class="fa-solid fa-bell" style="color: #ef4444;"></i>
+        <i class="fa-solid fa-bell" style="color:var(--accent-danger);"></i>
         <span>Мгновенный вызов Andon / Фиксация проблемы на линии</span>
       </h3>
       <p class="modal-subtitle-text">
-        Сигнал Andon немедленно поступит ремонтникам ОГМ, контролёрам ОТК, мастеру цеха и высветится на мониторах завода.
+        Сигнал Andon немедленно оповестит ремонтников ОГМ, службу ОТК, мастера цеха и высветится на мониторах завода.
       </p>
 
-      <form id="form-andon-trigger" class="modal-form">
+      <form id="form-andon-trigger">
         <div class="form-row-2">
           <div class="form-group">
-            <label for="andon-target-dept">Производственный цех</label>
-            <select id="andon-target-dept" class="form-input" onchange="onAndonDeptChange()" required></select>
+            <label for="andon-target-dept">Цех завода</label>
+            <select id="andon-target-dept" class="form-select form-input-no-icon" onchange="onAndonDeptChange()" required></select>
           </div>
           <div class="form-group">
             <label for="andon-line-name">Линия / Пост</label>
-            <select id="andon-line-name" class="form-input" required></select>
+            <select id="andon-line-name" class="form-select form-input-no-icon" required></select>
           </div>
         </div>
 
         <div class="form-row-3">
           <div class="form-group">
             <label for="andon-defect-type">Категория проблемы</label>
-            <select id="andon-defect-type" class="form-input" required>
+            <select id="andon-defect-type" class="form-select form-input-no-icon" required>
               <option value="Поломка станка / Сбой оборудования">⚙️ Поломка станка / Сбой оборудования</option>
-              <option value="Сварочный аппарат / Неисправность">🔥 Сварочный аппарат / Сбой сварки</option>
-              <option value="Брак металла / Комплектующих">❌ Брак металла / Дефект поставщика</option>
+              <option value="Сварочный аппарат / Неисправность">🔥 Сварочный комплекс / Сбой сварки</option>
+              <option value="Брак комплектующих / Поставщик">❌ Брак комплектующих / Поставщик</option>
               <option value="Закончились детали / Ожидание">⏳ Закончились детали на посту</option>
               <option value="Сбой энергоснабжения / Давления">⚡ Сбой электроэнергии / воздуха</option>
             </select>
           </div>
           <div class="form-group">
             <label for="andon-error-code">Код ошибки станка (если есть)</label>
-            <input type="text" id="andon-error-code" class="form-input" placeholder="Например: ERR-402, E-108 KUKA">
+            <input type="text" id="andon-error-code" class="form-input form-input-no-icon" placeholder="например: ERR-402, KUKA-108">
           </div>
           <div class="form-group">
             <label for="andon-target-service">Кому направляется вызов</label>
-            <select id="andon-target-service" class="form-input" required>
+            <select id="andon-target-service" class="form-select form-input-no-icon" required>
               <option value="ws-mechanic">🛠️ ОГМ / Ремонтная служба</option>
               <option value="ws-quality">🔍 ОТК / Служба качества</option>
               <option value="ws-energy">⚡ ОГЭ / Энергетики</option>
@@ -1210,7 +954,7 @@
 
         <div class="modal-actions-row">
           <button type="button" class="btn-cancel" onclick="closeModal('modal-andon-trigger')">Отмена</button>
-          <button type="submit" class="btn-action-primary" style="background:#ef4444; border-color:#ef4444;">
+          <button type="submit" class="btn-action-primary" style="background:var(--accent-danger); padding:12px 24px;">
             <i class="fa-solid fa-tower-broadcast"></i> ОТПРАВИТЬ СИГНАЛ ANDON
           </button>
         </div>
@@ -1218,81 +962,31 @@
     </div>
   </div>
 
-  <!-- 2. MODAL: MECHANIC RESOLVE -->
-  <div id="modal-mechanic-resolve" class="modal-overlay hidden">
-    <div class="modal-card">
-      <button class="modal-close" onclick="closeModal('modal-mechanic-resolve')"><i class="fa-solid fa-xmark"></i></button>
-      <h3 class="modal-header-title">
-        <i class="fa-solid fa-screwdriver-wrench" style="color: var(--primary-blue);"></i>
-        <span>Отчёт механика ОГМ о завершении ремонта</span>
-      </h3>
-      <form id="form-mechanic-resolve" class="modal-form">
-        <input type="hidden" id="resolve-issue-id">
-        <div id="resolve-issue-summary" class="report-preview-box"></div>
-
-        <div class="form-group">
-          <label for="resolve-mechanic-notes">Причина поломки и выполненные ремонтные работы:</label>
-          <textarea id="resolve-mechanic-notes" class="form-textarea" rows="3" placeholder="Например: Ремонт закончен, причина: обрыв кабеля датчика температуры. Кабель заменен, инвертор протестирован." required></textarea>
-        </div>
-
-        <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-mechanic-resolve')">Отмена</button>
-          <button type="submit" class="btn-action-primary btn-accent-blue">
-            <i class="fa-solid fa-check"></i> Завершить ремонт и передать ОТК
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- 3. MODAL: CONTROLLER UNLOCK LINE -->
-  <div id="modal-controller-unlock" class="modal-overlay hidden">
-    <div class="modal-card">
-      <button class="modal-close" onclick="closeModal('modal-controller-unlock')"><i class="fa-solid fa-xmark"></i></button>
-      <h3 class="modal-header-title">
-        <i class="fa-solid fa-lock-open" style="color: var(--accent-emerald);"></i>
-        <span>Разблокировка линии контролёром ОТК</span>
-      </h3>
-      <form id="form-controller-unlock" class="modal-form">
-        <input type="hidden" id="unlock-issue-id">
-        <div id="unlock-issue-summary" class="report-preview-box"></div>
-
-        <div class="form-group">
-          <label for="unlock-controller-notes">Результат проверки первой детали (First Piece Inspection):</label>
-          <textarea id="unlock-controller-notes" class="form-textarea" rows="3" placeholder="Например: Первая деталь проверена калибрами и на разрыв шва. Геометрия в допуске. Линия разблокирована." required></textarea>
-        </div>
-
-        <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-controller-unlock')">Отмена</button>
-          <button type="submit" class="btn-action-primary btn-accent-emerald">
-            <i class="fa-solid fa-circle-check"></i> Подтвердить разблокировку линии
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- 4. MODAL: SUBMIT SHIFT REPORT -->
+  <!-- 2. MODAL: SUBMIT SHIFT REPORT (FOR MASTER) -->
   <div id="modal-submit-shift-report" class="modal-overlay hidden">
     <div class="modal-card modal-card-wide">
       <button class="modal-close" onclick="closeModal('modal-submit-shift-report')"><i class="fa-solid fa-xmark"></i></button>
       <h3 class="modal-header-title">
-        <i class="fa-solid fa-file-signature" style="color: var(--accent-gold);"></i>
-        <span>Сдача сменного цифрового рапорта цеха / отдела</span>
+        <i class="fa-solid fa-file-signature" style="color:var(--accent-amber);"></i>
+        <span>Сдача сменного цифрового рапорта цеха</span>
       </h3>
-      <form id="form-submit-shift-report" class="modal-form">
+      <p class="modal-subtitle-text">
+        Рапорт поступает на визирование Начальнику производства и на утверждение Генеральному директору завода.
+      </p>
+
+      <form id="form-submit-shift-report">
         <div class="form-row-3">
           <div class="form-group">
-            <label for="sr-dept">Цех / Подразделение</label>
-            <select id="sr-dept" class="form-input" required></select>
+            <label for="sr-dept">Цех завода</label>
+            <select id="sr-dept" class="form-select form-input-no-icon" required></select>
           </div>
           <div class="form-group">
             <label for="sr-date">Дата смены</label>
-            <input type="date" id="sr-date" class="form-input" required>
+            <input type="date" id="sr-date" class="form-input form-input-no-icon" required>
           </div>
           <div class="form-group">
             <label for="sr-shift">Рабочая смена</label>
-            <select id="sr-shift" class="form-input" required>
+            <select id="sr-shift" class="form-select form-input-no-icon" required>
               <option value="1-я смена">1-я смена (08:00 - 17:00)</option>
               <option value="2-я смена">2-я смена (17:00 - 01:00)</option>
             </select>
@@ -1301,389 +995,234 @@
 
         <div class="form-row-3">
           <div class="form-group">
-            <label for="sr-plan">План смены (шт)</label>
-            <input type="number" id="sr-plan" class="form-input" min="0" placeholder="500" required>
+            <label for="sr-plan">Сменный план (шт)</label>
+            <input type="number" id="sr-plan" class="form-input form-input-no-icon" min="0" value="500" required>
           </div>
           <div class="form-group">
             <label for="sr-fact">Фактический выпуск (шт)</label>
-            <input type="number" id="sr-fact" class="form-input" min="0" placeholder="485" required>
+            <input type="number" id="sr-fact" class="form-input form-input-no-icon" min="0" value="485" required>
           </div>
           <div class="form-group">
             <label for="sr-scrap">Брак (шт)</label>
-            <input type="number" id="sr-scrap" class="form-input" min="0" placeholder="3" required>
+            <input type="number" id="sr-scrap" class="form-input form-input-no-icon" min="0" value="3" required>
           </div>
         </div>
 
         <div class="form-row-2">
           <div class="form-group">
             <label for="sr-downtime">Время простоя (минут)</label>
-            <input type="number" id="sr-downtime" class="form-input" min="0" placeholder="14" value="0">
+            <input type="number" id="sr-downtime" class="form-input form-input-no-icon" min="0" value="14">
           </div>
           <div class="form-group">
             <label for="sr-downtime-reason">Причина простоя</label>
-            <input type="text" id="sr-downtime-reason" class="form-input" placeholder="Например: Задержка деталей со штамповки">
+            <input type="text" id="sr-downtime-reason" class="form-input form-input-no-icon" value="Задержка комплектующих со штамповки">
           </div>
         </div>
 
         <div class="form-group">
-          <label for="sr-resources">Потребление ресурсов (кВт·ч, газ, воздух, материалы)</label>
-          <input type="text" id="sr-resources" class="form-input" placeholder="Например: Эл-во 410 кВт·ч, воздух 6.8 бар">
+          <label for="sr-resources">Потребление ресурсов</label>
+          <input type="text" id="sr-resources" class="form-input form-input-no-icon" value="Эл-во 410 кВт·ч, воздух 6.8 бар">
         </div>
 
         <div class="form-group">
-          <label for="sr-issues">Проблемы смены и ключевые инциденты</label>
-          <textarea id="sr-issues" class="form-textarea" rows="2" placeholder="Опишите возникшие трудности..."></textarea>
+          <label for="sr-issues">Инциденты смены</label>
+          <textarea id="sr-issues" class="form-textarea" rows="2">Смена отработала по нормам. 3 детали изолированы в Red Box.</textarea>
         </div>
 
         <div class="form-group">
-          <label for="sr-suggestions">Предложения по улучшению (Kaizen / Непрерывное улучшение)</label>
-          <textarea id="sr-suggestions" class="form-textarea" rows="2" placeholder="Предложения для начальника производства..."></textarea>
+          <label for="sr-suggestions">Предложения Kaizen</label>
+          <textarea id="sr-suggestions" class="form-textarea" rows="2">Предложение: создать буферный запас кронштейнов на 50 комплектов.</textarea>
         </div>
 
         <div class="modal-actions-row">
           <button type="button" class="btn-cancel" onclick="closeModal('modal-submit-shift-report')">Отмена</button>
-          <button type="submit" class="btn-action-primary btn-accent-gold">
-            <i class="fa-solid fa-paper-plane"></i> Отправить рапорт смены
+          <button type="submit" class="btn-action-primary" style="background:var(--accent-amber); color:#0f172a; font-weight:800;">
+            <i class="fa-solid fa-file-export"></i> Отправить рапорт Директору
           </button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- 5. MODAL: INCOMING INSPECTION (ОТК) -->
-  <div id="modal-incoming-inspection" class="modal-overlay hidden">
-    <div class="modal-card modal-card-wide">
-      <button class="modal-close" onclick="closeModal('modal-incoming-inspection')"><i class="fa-solid fa-xmark"></i></button>
-      <h3 class="modal-header-title">
-        <i class="fa-solid fa-truck-ramp-box" style="color: var(--primary-blue);"></i>
-        <span>Акт входного контроля сырья / металла / химии</span>
-      </h3>
-      <form id="form-incoming-inspection" class="modal-form">
-        <div class="form-row-2">
-          <div class="form-group">
-            <label for="inc-mat-name">Наименование сырья / материала</label>
-            <input type="text" id="inc-mat-name" class="form-input" placeholder="Например: Рулонная сталь 08Ю (1.5 мм)" required>
-          </div>
-          <div class="form-group">
-            <label for="inc-supplier">Поставщик</label>
-            <input type="text" id="inc-supplier" class="form-input" placeholder="Например: ПАО Северсталь" required>
-          </div>
-        </div>
-
-        <div class="form-row-3">
-          <div class="form-group">
-            <label for="inc-batch">Номер партии</label>
-            <input type="text" id="inc-batch" class="form-input" placeholder="LOT-2026-99" required>
-          </div>
-          <div class="form-group">
-            <label for="inc-sample">Объем выборки (шт/м)</label>
-            <input type="number" id="inc-sample" class="form-input" value="100" required>
-          </div>
-          <div class="form-group">
-            <label for="inc-defect">Выявлено дефектов</label>
-            <input type="number" id="inc-defect" class="form-input" value="0" required>
-          </div>
-        </div>
-
-        <div class="form-row-2">
-          <div class="form-group">
-            <label for="inc-verdict">Вердикт входного контроля</label>
-            <select id="inc-verdict" class="form-input" required>
-              <option value="accepted">✅ Годен к производству</option>
-              <option value="quarantine">⚠️ Карантинная зона (на согласование)</option>
-              <option value="rejected">❌ Брак (Возврат поставщику)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="inc-inspector">ФИО контролёра ОТК</label>
-            <input type="text" id="inc-inspector" class="form-input" placeholder="Фарход Ахмедов">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="inc-comments">Заключение контролёра ОТК</label>
-          <textarea id="inc-comments" class="form-textarea" rows="2" placeholder="Сертификат качества сверен, толщина и химсостав соответствуют..."></textarea>
-        </div>
-
-        <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-incoming-inspection')">Отмена</button>
-          <button type="submit" class="btn-action-primary btn-accent-blue">Зарегистрировать акт приёмки</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- 6. MODAL: RECLAMATION (РЕКЛАМАЦИЯ) -->
-  <div id="modal-reclamation" class="modal-overlay hidden">
-    <div class="modal-card modal-card-wide">
-      <button class="modal-close" onclick="closeModal('modal-reclamation')"><i class="fa-solid fa-xmark"></i></button>
-      <h3 class="modal-header-title">
-        <i class="fa-solid fa-car-burst" style="color: var(--accent-danger);"></i>
-        <span>Регистрация рекламации с автозавода (Методика 8D / 5-Why)</span>
-      </h3>
-      <form id="form-reclamation" class="modal-form">
-        <div class="form-row-2">
-          <div class="form-group">
-            <label for="rec-customer">Автозавод / Заказчик</label>
-            <input type="text" id="rec-customer" class="form-input" value="UzAuto Motors (г. Асака)" required>
-          </div>
-          <div class="form-group">
-            <label for="rec-carmodel">Модель автомобиля</label>
-            <select id="rec-carmodel" class="form-input" required>
-              <option value="Chevrolet Cobalt">Chevrolet Cobalt</option>
-              <option value="Chevrolet Tracker">Chevrolet Tracker</option>
-              <option value="Chevrolet Onix">Chevrolet Onix</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-row-2">
-          <div class="form-group">
-            <label for="rec-partno">Артикул узла сиденья</label>
-            <input type="text" id="rec-partno" class="form-input" placeholder="52109400-RH" required>
-          </div>
-          <div class="form-group">
-            <label for="rec-severity">Критичность рекламации</label>
-            <select id="rec-severity" class="form-input" required>
-              <option value="critical">🚨 Критическая (Безопасность / Сход с конвейера)</option>
-              <option value="major" selected>⚠️ Значительная (Функциональный дефект)</option>
-              <option value="minor">ℹ️ Незначительная (Внешний вид / Эстетика)</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="rec-desc">Суть претензии автозавода</label>
-          <textarea id="rec-desc" class="form-textarea" rows="2" placeholder="Опишите рекламационный дефект..." required></textarea>
-        </div>
-
-        <div class="form-group">
-          <label for="rec-rootcause">Анализ коренной причины (5-Why)</label>
-          <textarea id="rec-rootcause" class="form-textarea" rows="2" placeholder="Почему возник дефект? 1. ... 2. ..."></textarea>
-        </div>
-
-        <div class="form-group">
-          <label for="rec-corrective">Корректирующие меры (8D)</label>
-          <textarea id="rec-corrective" class="form-textarea" rows="2" placeholder="Внедрено Poka-Yoke, обновлена карта SOS..."></textarea>
-        </div>
-
-        <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-reclamation')">Отмена</button>
-          <button type="submit" class="btn-action-primary btn-accent-gold">Сохранить рекламацию</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- 7. MODAL: EMERGENCY ALERT ОГЭ -->
-  <div id="modal-energy-alert" class="modal-overlay hidden">
+  <!-- 3. MODAL: DIRECTOR APPROVE SHIFT REPORT -->
+  <div id="modal-director-approve" class="modal-overlay hidden">
     <div class="modal-card">
-      <button class="modal-close" onclick="closeModal('modal-energy-alert')"><i class="fa-solid fa-xmark"></i></button>
+      <button class="modal-close" onclick="closeModal('modal-director-approve')"><i class="fa-solid fa-xmark"></i></button>
       <h3 class="modal-header-title">
-        <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444;"></i>
-        <span>Аварийный сигнал службы главного энергетика</span>
+        <i class="fa-solid fa-stamp" style="color:var(--primary-blue);"></i>
+        <span>Резолюция Генерального директора завода</span>
       </h3>
-      <form id="form-energy-alert" class="modal-form">
-        <div class="form-group">
-          <label for="alert-oge-desc">Характер аварии на линии энергоснабжения:</label>
-          <textarea id="alert-oge-desc" class="form-textarea" rows="3" placeholder="Например: Падение давления сжатого воздуха в главной магистрали до 4.2 бар из-за остановки компрессора №1. Все цеха предупреждены." required></textarea>
-        </div>
-        <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-energy-alert')">Отмена</button>
-          <button type="submit" class="btn-action-primary" style="background:#ef4444; border-color:#ef4444;">
-            <i class="fa-solid fa-tower-broadcast"></i> РАЗОСЛАТЬ АВАРИЙНЫЙ СИГНАЛ
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
+      <p class="modal-subtitle-text">
+        Официальное утверждение сменного рапорта цеха с внесением визы в единый реестр.
+      </p>
 
-  <!-- 8. MODAL: FACILITY CHECKLIST АХО -->
-  <div id="modal-facility-chk" class="modal-overlay hidden">
-    <div class="modal-card modal-card-wide">
-      <button class="modal-close" onclick="closeModal('modal-facility-chk')"><i class="fa-solid fa-xmark"></i></button>
-      <h3 class="modal-header-title">
-        <i class="fa-solid fa-broom" style="color: var(--primary-blue);"></i>
-        <span>Ежедневный чек-лист обслуживания зданий и территории АХО</span>
-      </h3>
-      <form id="form-facility-chk" class="modal-form">
-        <div class="worker-checklist-grid">
-          <label class="worker-check-item">
-            <input type="checkbox" id="fac-clean" checked> <span>Чистота производственных цехов 100%</span>
-          </label>
-          <label class="worker-check-item">
-            <input type="checkbox" id="fac-canteen" checked> <span>Столовая: саннормы соблюдены</span>
-          </label>
-          <label class="worker-check-item">
-            <input type="checkbox" id="fac-security" checked> <span>Охрана периметра и КПП без нарушений</span>
-          </label>
-          <label class="worker-check-item">
-            <input type="checkbox" id="fac-waste" checked> <span>Вывоз производственных отходов и ТБО</span>
-          </label>
-        </div>
-
-        <div class="form-row-2">
-          <div class="form-group">
-            <label for="fac-open-req">Открытых хоззаявок от цехов</label>
-            <input type="number" id="fac-open-req" class="form-input" value="1">
-          </div>
-          <div class="form-group">
-            <label for="fac-closed-req">Решено и закрыто заявок за смену</label>
-            <input type="number" id="fac-closed-req" class="form-input" value="4">
-          </div>
+      <form id="form-director-approve">
+        <input type="hidden" id="approve-report-id">
+        <div id="approve-report-summary" style="background:#f8fafc; border:1px solid var(--border-light); padding:12px 14px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:13px;">
+          <!-- Summary inserted via JS -->
         </div>
 
         <div class="form-group">
-          <label for="fac-notes">Служебный комментарий инспектора АХО</label>
-          <textarea id="fac-notes" class="form-textarea" rows="2" placeholder="Столовая обеспечила смену обедами. Производственные площадки убраны..."></textarea>
-        </div>
-
-        <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-facility-chk')">Отмена</button>
-          <button type="submit" class="btn-action-primary btn-accent-emerald">Сохранить отчёт АХО</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- 9. MODAL: CREATE QUALITY DAILY TASK -->
-  <div id="modal-create-quality-task" class="modal-overlay hidden">
-    <div class="modal-card modal-card-wide">
-      <button class="modal-close" onclick="closeModal('modal-create-quality-task')"><i class="fa-solid fa-xmark"></i></button>
-      <h3 class="modal-header-title">
-        <i class="fa-solid fa-list-check" style="color: var(--primary-blue);"></i>
-        <span>Выдача ежедневного задания службы качества (ОТК)</span>
-      </h3>
-      <form id="form-create-quality-task" class="modal-form">
-        <div class="form-row-3">
-          <div class="form-group">
-            <label for="new-quality-date">Дата выполнения</label>
-            <input type="date" id="new-quality-date" class="form-input" required>
-          </div>
-          <div class="form-group">
-            <label for="new-task-target-role">Категория сотрудника</label>
-            <select id="new-task-target-role" class="form-input" required>
-              <option value="engineer">👷 Инженер по качеству (Инженерный уровень)</option>
-              <option value="controller">🔍 Контролёр ОТК (Линейный надзор)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="new-quality-priority">Приоритет</label>
-            <select id="new-quality-priority" class="form-input" required>
-              <option value="critical">🚨 Критический</option>
-              <option value="high" selected>⚡ Высокий</option>
-              <option value="normal">📋 Плановый</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-row-2">
-          <div class="form-group">
-            <label for="new-quality-dept">Цех завода</label>
-            <select id="new-quality-dept" class="form-input" onchange="onQualityTaskDeptChange()" required></select>
-          </div>
-          <div class="form-group">
-            <label for="new-quality-line">Линия / Пост</label>
-            <select id="new-quality-line" class="form-input" required></select>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="new-quality-title">Название задания</label>
-          <input type="text" id="new-quality-title" class="form-input" placeholder="Например: Калибровка динамометрических гайковертов..." required>
-        </div>
-
-        <div class="form-group">
-          <label for="new-quality-desc">Подробные инструкции</label>
-          <textarea id="new-quality-desc" class="form-textarea" rows="2" placeholder="Опишите, что именно проверить..." required></textarea>
-        </div>
-
-        <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-create-quality-task')">Отмена</button>
-          <button type="submit" class="btn-action-primary btn-accent-blue">Отправить задание</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- 10. MODAL: BIQS AUDIT WALKTHROUGH -->
-  <div id="modal-biqs-audit" class="modal-overlay hidden">
-    <div class="modal-card modal-card-wide">
-      <button class="modal-close" onclick="closeModal('modal-biqs-audit')"><i class="fa-solid fa-xmark"></i></button>
-      <h3 class="modal-header-title">
-        <i class="fa-solid fa-clipboard-check" style="color: var(--accent-emerald);"></i>
-        <span>Проведение оперативного аудита BIQS на линии</span>
-      </h3>
-      <form id="form-create-audit" class="modal-form">
-        <div class="form-row-2">
-          <div class="form-group">
-            <label for="audit-dept-select">Проверяемый цех</label>
-            <select id="audit-dept-select" class="form-input" required></select>
-          </div>
-          <div class="form-group">
-            <label for="audit-line-input">Линия и пост</label>
-            <input type="text" id="audit-line-input" class="form-input" placeholder="Линия Cobalt - Пост #2" required>
-          </div>
-        </div>
-
-        <div class="form-row-2">
-          <div class="form-group">
-            <label for="audit-auditor-name">Аудитор</label>
-            <input type="text" id="audit-auditor-name" class="form-input" required>
-          </div>
-          <div class="form-group">
-            <label for="audit-worker-name">Рабочий / Оператор</label>
-            <input type="text" id="audit-worker-name" class="form-input" placeholder="Ибрагимов С." required>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Обязательные пункты стандартов BIQS:</label>
-          <div id="audit-questions-container" class="audit-questions-list"></div>
-        </div>
-
-        <div class="modal-actions-row">
-          <button type="button" class="btn-cancel" onclick="closeModal('modal-biqs-audit')">Отмена</button>
-          <button type="submit" class="btn-action-primary btn-accent-emerald">Завершить аудит</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- 11. MODAL: CREATE INVITE KEY (ADMIN) -->
-  <div id="modal-create-key" class="modal-overlay hidden">
-    <div class="modal-card">
-      <button class="modal-close" onclick="closeModal('modal-create-key')"><i class="fa-solid fa-xmark"></i></button>
-      <h3 class="modal-header-title">
-        <i class="fa-solid fa-ticket" style="color: var(--accent-gold);"></i>
-        <span>Генерация инвайт-ключа для сотрудника</span>
-      </h3>
-      <form id="form-create-key" class="modal-form">
-        <div class="form-group">
-          <label for="key-role-select">Роль в системе</label>
-          <select id="key-role-select" class="form-input" required>
-            <option value="operator">Рабочий линии</option>
-            <option value="controller">Контролёр ОТК</option>
-            <option value="engineer">Инженер качества</option>
-            <option value="mechanic">Механик ОГМ</option>
-            <option value="shop_head">Мастер цеха</option>
-            <option value="quality_head">Начальник ОТК</option>
+          <label for="director-verdict-select">Шаблоны резолюций директора:</label>
+          <select id="director-verdict-select" class="form-select form-input-no-icon" onchange="onDirectorVerdictTemplateChange(this.value)">
+            <option value="Утверждено. Замечаний по смене нет, темп выдержан.">Утверждено без замечаний (темп выдержан)</option>
+            <option value="Утверждено. На следующей смене обеспечить буферный запас деталей.">Обеспечить буферный запас деталей</option>
+            <option value="Утверждено с замечанием: ОГМ провести ревизию датчиков сварочного робота.">Поручение ОГМ провести ревизию оборудования</option>
+            <option value="Службе качества ОТК провести 100% повторный аудит моментов затяжки.">Поручение ОТК провести повторный аудит</option>
           </select>
         </div>
 
         <div class="form-group">
-          <label for="key-dept-select">Цех сотрудника</label>
-          <select id="key-dept-select" class="form-input" required></select>
-        </div>
-
-        <div class="form-group">
-          <label for="key-note">Заметка</label>
-          <input type="text" id="key-note" class="form-input" placeholder="Например: Для новых сборщиков">
+          <label for="director-verdict-text">Текст официальной резолюции Директора:</label>
+          <textarea id="director-verdict-text" class="form-textarea" rows="3" required>Утверждено. Замечаний по смене нет, темп выдержан.</textarea>
         </div>
 
         <div class="modal-actions-row">
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-director-approve')">Отмена</button>
+          <button type="submit" class="btn-action-primary" style="background:var(--bg-header);">
+            <i class="fa-solid fa-signature"></i> Подписать и утвердить рапорт
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 4. MODAL: HEAD REVIEW SHIFT REPORT -->
+  <div id="modal-head-review" class="modal-overlay hidden">
+    <div class="modal-card">
+      <button class="modal-close" onclick="closeModal('modal-head-review')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-header-title">
+        <i class="fa-solid fa-user-check" style="color:var(--primary-blue);"></i>
+        <span>Визирование сменного рапорта Начальником цеха</span>
+      </h3>
+      <form id="form-head-review">
+        <input type="hidden" id="head-review-report-id">
+        <div class="form-group">
+          <label for="head-review-comment">Служебный комментарий / Виза начальника цеха:</label>
+          <textarea id="head-review-comment" class="form-textarea" rows="3" required>Смена отработала по нормам, все посты обеспечены материалами.</textarea>
+        </div>
+        <div class="modal-actions-row">
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-head-review')">Отмена</button>
+          <button type="submit" class="btn-action-primary">Визировать рапорт</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 5. MODAL: MECHANIC RESOLVE -->
+  <div id="modal-mechanic-resolve" class="modal-overlay hidden">
+    <div class="modal-card">
+      <button class="modal-close" onclick="closeModal('modal-mechanic-resolve')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-header-title">
+        <i class="fa-solid fa-wrench" style="color:var(--primary-blue);"></i>
+        <span>Отчёт механика ОГМ о завершении ремонта</span>
+      </h3>
+      <form id="form-mechanic-resolve">
+        <input type="hidden" id="resolve-issue-id">
+        <div id="resolve-issue-summary" style="background:#f8fafc; padding:12px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:13px;"></div>
+        <div class="form-group">
+          <label for="resolve-mechanic-notes">Причина поломки и выполненные работы:</label>
+          <textarea id="resolve-mechanic-notes" class="form-textarea" rows="3" required placeholder="Например: Замена датчика температуры инвертора, калибровка привода"></textarea>
+        </div>
+        <div class="modal-actions-row">
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-mechanic-resolve')">Отмена</button>
+          <button type="submit" class="btn-action-primary">Завершить ремонт и передать ОТК</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 6. MODAL: CONTROLLER UNLOCK LINE -->
+  <div id="modal-controller-unlock" class="modal-overlay hidden">
+    <div class="modal-card">
+      <button class="modal-close" onclick="closeModal('modal-controller-unlock')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-header-title">
+        <i class="fa-solid fa-lock-open" style="color:var(--accent-emerald);"></i>
+        <span>Разблокировка линии контролёром ОТК</span>
+      </h3>
+      <form id="form-controller-unlock">
+        <input type="hidden" id="unlock-issue-id">
+        <div id="unlock-issue-summary" style="background:#f8fafc; padding:12px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:13px;"></div>
+        <div class="form-group">
+          <label for="unlock-controller-notes">Результат проверки первой детали (First Piece Inspection):</label>
+          <textarea id="unlock-controller-notes" class="form-textarea" rows="3" required placeholder="Первая деталь проверена, геометрия и затяжка в норме. Линия разблокирована."></textarea>
+        </div>
+        <div class="modal-actions-row">
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-controller-unlock')">Отмена</button>
+          <button type="submit" class="btn-action-primary" style="background:var(--accent-emerald);">Разблокировать линию</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 7. MODAL: BIQS AUDIT -->
+  <div id="modal-biqs-audit" class="modal-overlay hidden">
+    <div class="modal-card modal-card-wide">
+      <button class="modal-close" onclick="closeModal('modal-biqs-audit')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-header-title">
+        <i class="fa-solid fa-clipboard-check" style="color:var(--accent-emerald);"></i>
+        <span>Проведение аудита стандартов GM BIQS</span>
+      </h3>
+      <form id="form-create-audit">
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="audit-dept-select">Цех</label>
+            <select id="audit-dept-select" class="form-select form-input-no-icon" required></select>
+          </div>
+          <div class="form-group">
+            <label for="audit-line-input">Линия / Пост</label>
+            <input type="text" id="audit-line-input" class="form-input form-input-no-icon" value="Пост сборки Cobalt #1" required>
+          </div>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="audit-auditor-name">ФИО Аудитора</label>
+            <input type="text" id="audit-auditor-name" class="form-input form-input-no-icon" value="Рустам Исмаилов (ОТК)" required>
+          </div>
+          <div class="form-group">
+            <label for="audit-worker-name">ФИО Оператора на посту</label>
+            <input type="text" id="audit-worker-name" class="form-input form-input-no-icon" value="Иброхим Салимов" required>
+          </div>
+        </div>
+
+        <div id="audit-questions-container" style="margin-top:14px; max-height:240px; overflow-y:auto;"></div>
+
+        <div class="modal-actions-row">
+          <button type="button" class="btn-cancel" onclick="closeModal('modal-biqs-audit')">Отмена</button>
+          <button type="submit" class="btn-action-primary" style="background:var(--accent-emerald);">Зафиксировать аудит BIQS</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 8. MODAL: CREATE INVITE KEY -->
+  <div id="modal-create-key" class="modal-overlay hidden">
+    <div class="modal-card">
+      <button class="modal-close" onclick="closeModal('modal-create-key')"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-header-title"><i class="fa-solid fa-key"></i> Генерация инвайт-кода</h3>
+      <form id="form-create-key">
+        <div class="form-group">
+          <label for="key-role-select">Роль для назначения</label>
+          <select id="key-role-select" class="form-select form-input-no-icon">
+            <option value="operator">Рабочий линии (operator)</option>
+            <option value="shop_head">Мастер / Начальник цеха (shop_head)</option>
+            <option value="controller">Контролёр качества ОТК (controller)</option>
+            <option value="engineer">Инженер качества (engineer)</option>
+            <option value="mechanic">Наладчик-механик ОГМ (mechanic)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="key-dept-select">Цех</label>
+          <select id="key-dept-select" class="form-select form-input-no-icon"></select>
+        </div>
+        <div class="form-group">
+          <label for="key-note">Заметка</label>
+          <input type="text" id="key-note" class="form-input form-input-no-icon" placeholder="Для кого выдан код...">
+        </div>
+        <div class="modal-actions-row">
           <button type="button" class="btn-cancel" onclick="closeModal('modal-create-key')">Отмена</button>
-          <button type="submit" class="btn-action-primary btn-accent-gold">Сгенерировать ключ</button>
+          <button type="submit" class="btn-action-primary">Сгенерировать код</button>
         </div>
       </form>
     </div>

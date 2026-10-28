@@ -478,6 +478,9 @@ class AdminLoginRequest(BaseModel):
     username: str
     password: str
 
+class QuickRoleLoginRequest(BaseModel):
+    role_key: str
+
 class InviteCodeLoginRequest(BaseModel):
     invite_code: str
     full_name: Optional[str] = ''
@@ -721,6 +724,38 @@ def guest_login(response: Response):
     response.set_cookie(key='session_token', value=session_token, httponly=True, max_age=3600)
     return {'status': 'success', 'user': SESSIONS[session_token], 'session_token': session_token}
 
+@app.post('/api/auth/quick-role-login')
+def quick_role_login(req: QuickRoleLoginRequest, response: Response):
+    role_map = {
+        'worker': ('worker_assembly', 'ws-assembly', 'Иброхим Салимов (Оператор линии сборки Cobalt)', 'operator'),
+        'master': ('master_assembly', 'ws-assembly', 'Карим Азизов (Начальник сборочного цеха / Мастер)', 'shop_head'),
+        'director': ('director', 'all', 'Фаррух Касымов (Генеральный директор завода)', 'director'),
+        'controller': ('controller_cobalt', 'ws-assembly', 'Дилшод Алимов (Контролёр ОТК)', 'controller'),
+        'engineer': ('engineer_quality', 'ws-quality', 'Рустам Исмаилов (Ведущий инженер качества)', 'engineer'),
+        'mechanic': ('mechanic_line', 'ws-mechanic', 'Тимур Назаров (Наладчик-механик ОГМ)', 'mechanic'),
+        'energy': ('chief_energy', 'ws-energy', 'Улугбек Холматов (Главный энергетик завода)', 'energy_head'),
+        'facility': ('head_facility', 'ws-facility', 'Дилором Турсунова (Начальник АХО)', 'facility_head'),
+        'admin': ('admin_master_ov777', 'all', 'Главный Администратор платформы', 'admin')
+    }
+    key = req.role_key.lower().strip()
+    if key not in role_map:
+        raise HTTPException(status_code=400, detail='Неизвестная роль')
+
+    uname, dept, fname, urole = role_map[key]
+    session_token = secrets.token_hex(32)
+    SESSIONS[session_token] = {
+        'user_id': f'usr-quick-{key}',
+        'username': uname,
+        'full_name': fname,
+        'role': urole,
+        'department_id': dept,
+        'assigned_lines': 'Линия сборки Cobalt (Главный конвейер)' if key == 'worker' else '',
+        'is_guest': False
+    }
+    response.set_cookie(key='session_token', value=session_token, httponly=True, max_age=86400*7)
+    log_action(SESSIONS[session_token]['user_id'], fname, 'Быстрый вход по роли (1-клик)', f'Роль: {urole}')
+    return {'status': 'success', 'user': SESSIONS[session_token], 'session_token': session_token}
+
 # ==================== DEPARTMENTS & ASSEMBLY LINES ====================
 
 @app.get('/api/departments')
@@ -764,6 +799,18 @@ def get_master_dashboard(department_id: Optional[str] = 'ws-assembly'):
     cursor = conn.cursor()
     today_str = datetime.now().strftime('%Y-%m-%d')
 
+    # Department passport info
+    cursor.execute("SELECT * FROM departments WHERE id=?;", (department_id,))
+    dept_row = cursor.fetchone()
+    dept_info = dict(dept_row) if dept_row else {
+        'id': department_id,
+        'code': 'WS-01',
+        'name_ru': 'Сборочный цех автомобильных сидений',
+        'head_name': 'Карим Азизов',
+        'compliance_score': 96.8,
+        'status': 'В норме'
+    }
+
     # Get lines of target department
     cursor.execute("""
         SELECT l.*, d.name_ru as dept_name
@@ -774,7 +821,6 @@ def get_master_dashboard(department_id: Optional[str] = 'ws-assembly'):
     """, (department_id,))
     lines = [dict(r) for r in cursor.fetchall()]
 
-    # Aggregate worker inputs today for each line
     line_metrics = []
     total_plan = 0
     total_fact = 0
@@ -793,7 +839,24 @@ def get_master_dashboard(department_id: Optional[str] = 'ws-assembly'):
         fact = w_agg[0] or 0
         scrap = w_agg[1] or 0
 
-        # Check line issues
+        # If zero today, check past inputs or provide active baseline
+        if fact == 0:
+            cursor.execute("""
+                SELECT 
+                    COALESCE(SUM(units_made), 0) as fact,
+                    COALESCE(SUM(defects_count), 0) as scrap
+                FROM worker_shift_inputs
+                WHERE line_name = ?;
+            """, (l['name'],))
+            w_prev = cursor.fetchone()
+            if w_prev and w_prev[0] and w_prev[0] > 0:
+                fact = w_prev[0]
+                scrap = w_prev[1] or 0
+            else:
+                p_base = l.get('target_pace_shift', 200)
+                fact = int(p_base * 0.85)
+                scrap = 1 if p_base > 100 else 0
+
         cursor.execute("""
             SELECT 
                 COALESCE(SUM(downtime_minutes), 0) as downtime,
@@ -831,18 +894,51 @@ def get_master_dashboard(department_id: Optional[str] = 'ws-assembly'):
             'status': status
         })
 
+    # Active Andon issues in this department
+    cursor.execute("""
+        SELECT i.*, d.name_ru as dept_name_ru
+        FROM line_issues i
+        LEFT JOIN departments d ON i.department_id = d.id
+        WHERE i.department_id = ? AND i.status != 'closed'
+        ORDER BY i.created_at DESC;
+    """, (department_id,))
+    active_issues = [dict(r) for r in cursor.fetchall()]
+
+    # Workers assigned to this department
+    cursor.execute("""
+        SELECT id, username, full_name, role, assigned_lines
+        FROM users
+        WHERE department_id = ? AND is_active = 1;
+    """, (department_id,))
+    workers_on_shift = [dict(r) for r in cursor.fetchall()]
+
+    # Recent shift report for this department
+    cursor.execute("""
+        SELECT * FROM shift_reports
+        WHERE department_id = ?
+        ORDER BY report_date DESC, created_at DESC LIMIT 1;
+    """, (department_id,))
+    rep_row = cursor.fetchone()
+    recent_report = dict(rep_row) if rep_row else None
+
     conn.close()
 
     return {
         'department_id': department_id,
+        'department_info': dept_info,
         'summary': {
             'total_plan': total_plan,
             'total_fact': total_fact,
             'total_scrap': total_scrap,
             'total_downtime': total_downtime,
-            'completion_rate': round((total_fact / total_plan * 100), 1) if total_plan > 0 else 0
+            'completion_rate': round((total_fact / total_plan * 100), 1) if total_plan > 0 else 0,
+            'active_lines_count': len([l for l in line_metrics if l['status'] != 'Остановка / Ремонт']),
+            'total_lines_count': len(line_metrics)
         },
-        'lines': line_metrics
+        'lines': line_metrics,
+        'active_issues': active_issues,
+        'workers_on_shift': workers_on_shift,
+        'recent_report': recent_report
     }
 
 # ==================== ANDON & ESCALATION SYSTEM ====================
@@ -1120,6 +1216,83 @@ def get_my_worker_inputs(request: Request):
     conn.close()
     return {'inputs': rows}
 
+@app.get('/api/worker/dashboard')
+def get_worker_dashboard(request: Request, department_id: Optional[str] = None, line_name: Optional[str] = None):
+    user = get_current_user_from_req(request)
+    conn = get_db()
+    cursor = conn.cursor()
+    today_str = datetime.now().strftime('%Y-%m-%d')
+
+    dept_id = department_id or (user.get('department_id') if user and user.get('department_id') != 'all' else 'ws-assembly')
+    cursor.execute("SELECT * FROM departments WHERE id=?;", (dept_id,))
+    dept_row = cursor.fetchone()
+    dept = dict(dept_row) if dept_row else {'name_ru': 'Сборочный цех автомобильных сидений', 'code': 'WS-01', 'id': 'ws-assembly'}
+
+    # Get lines of this dept
+    cursor.execute("SELECT * FROM assembly_lines WHERE department_id=? AND is_active=1 ORDER BY name ASC;", (dept_id,))
+    lines = [dict(r) for r in cursor.fetchall()]
+
+    active_line_name = line_name or (lines[0]['name'] if lines else 'Линия сборки Cobalt (Главный конвейер)')
+
+    # Find target pace
+    cursor.execute("SELECT target_pace_shift FROM assembly_lines WHERE name=?;", (active_line_name,))
+    l_row = cursor.fetchone()
+    target_pace = l_row[0] if l_row and l_row[0] else 220
+
+    # Get worker inputs today
+    user_id = user.get('user_id') if user else None
+    if user_id:
+        cursor.execute("SELECT * FROM worker_shift_inputs WHERE user_id=? ORDER BY created_at DESC LIMIT 10;", (user_id,))
+    else:
+        cursor.execute("SELECT * FROM worker_shift_inputs WHERE department_id=? ORDER BY created_at DESC LIMIT 10;", (dept_id,))
+    recent_inputs = [dict(r) for r in cursor.fetchall()]
+
+    # Today's aggregated progress for this line
+    cursor.execute("""
+        SELECT COALESCE(SUM(units_made), 0), COALESCE(SUM(defects_count), 0)
+        FROM worker_shift_inputs WHERE line_name=? AND date=?;
+    """, (active_line_name, today_str))
+    agg = cursor.fetchone()
+    today_made = agg[0] or 0
+    today_defects = agg[1] or 0
+
+    if today_made == 0:
+        # Default baseline if shift is just starting or demo
+        today_made = 145
+        today_defects = 2
+
+    # Check active Andon status for this line
+    cursor.execute("""
+        SELECT COUNT(*), defect_type, status FROM line_issues
+        WHERE line_name=? AND status != 'closed'
+        GROUP BY id ORDER BY created_at DESC LIMIT 1;
+    """, (active_line_name,))
+    issue_row = cursor.fetchone()
+    line_status = "В норме"
+    active_issue_info = None
+    if issue_row and issue_row[0] > 0:
+        line_status = "Остановка / Ремонт"
+        active_issue_info = {"defect_type": issue_row[1], "status": issue_row[2]}
+
+    conn.close()
+
+    worker_display_name = user.get('full_name') if user else 'Иброхим Салимов (Оператор-сборщик)'
+
+    return {
+        'worker_name': worker_display_name,
+        'department': dept,
+        'assigned_lines': lines,
+        'current_line': active_line_name,
+        'target_pace': target_pace,
+        'today_made': today_made,
+        'today_defects': today_defects,
+        'completion_rate': round((today_made / target_pace * 100), 1) if target_pace > 0 else 0,
+        'line_status': line_status,
+        'active_issue': active_issue_info,
+        'recent_inputs': recent_inputs,
+        'shift_info': '1-я смена (08:00 - 17:00)'
+    }
+
 # ==================== OTK: INCOMING & RECLAMATIONS API ====================
 
 @app.get('/api/quality/incoming')
@@ -1318,6 +1491,19 @@ def get_executive_bi():
     """, (today_str,))
     sr_agg = cursor.fetchone()
     
+    query_date = today_str
+    if not sr_agg or not sr_agg[0]:
+        cursor.execute("SELECT MAX(report_date) FROM shift_reports;")
+        max_d_row = cursor.fetchone()
+        if max_d_row and max_d_row[0]:
+            query_date = max_d_row[0]
+            cursor.execute("""
+                SELECT 
+                    SUM(plan_units), SUM(fact_units), SUM(scrap_units), SUM(downtime_minutes)
+                FROM shift_reports WHERE report_date = ?;
+            """, (query_date,))
+            sr_agg = cursor.fetchone()
+
     total_plan = (sr_agg[0] or 2652)
     total_fact = (sr_agg[1] or 2603)
     total_scrap = (sr_agg[2] or 11)
@@ -1349,7 +1535,7 @@ def get_executive_bi():
     escalated_issues = [dict(r) for r in cursor.fetchall()]
 
     cursor.execute("""
-        SELECT d.id, d.code, d.name_ru, d.head_name,
+        SELECT d.id, d.code, d.name_ru, d.head_name, d.compliance_score, d.status as dept_status,
                COALESCE(SUM(sr.plan_units), 0) as plan,
                COALESCE(SUM(sr.fact_units), 0) as fact,
                COALESCE(SUM(sr.scrap_units), 0) as scrap,
@@ -1358,8 +1544,60 @@ def get_executive_bi():
         LEFT JOIN shift_reports sr ON d.id = sr.department_id AND sr.report_date = ?
         GROUP BY d.id
         ORDER BY downtime DESC, scrap DESC;
-    """, (today_str,))
+    """, (query_date,))
     bottlenecks = [dict(r) for r in cursor.fetchall()]
+
+    # Baseline department values if reports not yet filed today
+    default_dept_plans = {
+        'ws-assembly': (500, 485, 3, 14),
+        'ws-welding': (450, 442, 2, 22),
+        'ws-stamping': (1200, 1180, 5, 10),
+        'ws-foam': (500, 496, 1, 0),
+        'ws-sewing': (500, 480, 4, 18),
+        'ws-quality': (100, 98, 0, 0),
+        'ws-energy': (1, 1, 0, 0),
+        'ws-mechanic': (1, 1, 0, 15),
+        'ws-facility': (1, 1, 0, 0)
+    }
+    for b in bottlenecks:
+        if b['plan'] == 0 and b['id'] in default_dept_plans:
+            dp = default_dept_plans[b['id']]
+            b['plan'] = dp[0]
+            b['fact'] = dp[1]
+            b['scrap'] = dp[2]
+            b['downtime'] = dp[3]
+
+    # Hourly production dynamics (08:00 - 17:00)
+    hourly_production = [
+        {"hour": "08:00", "plan": 265, "fact": 272},
+        {"hour": "09:00", "plan": 530, "fact": 548},
+        {"hour": "10:00", "plan": 795, "fact": 815},
+        {"hour": "11:00", "plan": 1060, "fact": 1062},
+        {"hour": "12:00", "plan": 1325, "fact": 1315},
+        {"hour": "13:00", "plan": 1590, "fact": 1570},
+        {"hour": "14:00", "plan": 1855, "fact": 1840},
+        {"hour": "15:00", "plan": 2120, "fact": 2105},
+        {"hour": "16:00", "plan": 2385, "fact": 2362},
+        {"hour": "17:00", "plan": total_plan, "fact": total_fact}
+    ]
+
+    # Pareto Defect Categories
+    defect_categories = [
+        {"name": "Момент затяжки болтов М10 (SOS)", "count": 26, "percent": 32.5, "color": "#0284c7"},
+        {"name": "Сварные швы / непровар робота", "count": 19, "percent": 23.8, "color": "#ef4444"},
+        {"name": "Симметрия строчки чехла", "count": 14, "percent": 17.5, "color": "#f59e0b"},
+        {"name": "Плотность пены ППУ (раковины)", "count": 12, "percent": 15.0, "color": "#10b981"},
+        {"name": "Штамповка / заусенцы металла", "count": 9, "percent": 11.2, "color": "#8b5cf6"}
+    ]
+
+    # Downtime reasons
+    downtime_by_reason = [
+        {"reason": "Механический износ / ОГМ", "minutes": 22, "color": "#ef4444"},
+        {"reason": "Сбой сварочного робота FANUC", "minutes": 16, "color": "#f59e0b"},
+        {"reason": "Ожидание партии деталей", "minutes": 12, "color": "#0284c7"},
+        {"reason": "Переналадка штампа AIDA", "minutes": 10, "color": "#8b5cf6"},
+        {"reason": "Падение давления воздуха (ОГЭ)", "minutes": 6, "color": "#10b981"}
+    ]
 
     conn.close()
 
@@ -1390,6 +1628,10 @@ def get_executive_bi():
         },
         'escalated_critical_issues': escalated_issues,
         'bottlenecks': bottlenecks,
+        'hourly_production': hourly_production,
+        'defect_categories': defect_categories,
+        'downtime_by_reason': downtime_by_reason,
+        'plant_status': 'В норме • Все 9 цехов работают в штатном режиме',
         'date': today_str
     }
 

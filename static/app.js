@@ -1,5 +1,4 @@
-// ===== INDUSTRIAL DIGITAL MANUFACTURING PLATFORM JS (JV UZ-TONG HONG CO.) =====
-
+// ===== JV UZ-TONG HONG CO. DIGITAL MES PLATFORM JAVASCRIPT =====
 
 function escapeHtml(str) {
   if (str === null || str === undefined) return "";
@@ -12,69 +11,133 @@ function escapeHtml(str) {
 }
 
 let currentUser = null;
-let currentSimulatedRole = null;
+let currentWorkspace = "worker"; // "worker" | "master" | "director" | "andon" | "shift_reports" | "biqs" | "admin"
 let allDepartments = [];
 let allAssemblyLines = [];
 let allAndonEvents = [];
 let allShiftReports = [];
 
-let chartDefectsInstance = null;
-let chartScrapDeptInstance = null;
+// Chart.js instances
+let chartHourlyInstance = null;
+let chartWorkshopInstance = null;
+let chartDefectParetoInstance = null;
+let chartDowntimeInstance = null;
 
+// Standard GM BIQS Audit Questions
 const BIQS_STANDARD_QUESTIONS = [
-  { section: "Standardized Work", question_ru: "Рабочий точно соблюдает SOS (Standard Operation Sheet) и карту действий?", question_uz: "Ishchi SOS yoʻriqnomasiga va harakatlar ketma-ketligiga qatʼiy amal qilmoqdami?" },
-  { section: "Quality Gate", question_ru: "Проводится ли 100% самоконтроль затяжки и критических параметров перед передачей?", question_uz: "Keyingi postga uzatishdan oldin 100% oʻz-oʻzini nazorat qilish bajarilmoqdami?" },
-  { section: "Error Proofing (Poka-Yoke)", question_ru: "Исправны ли датчики наличия деталей, блокираторы и сенсоры оснастки?", question_uz: "Detallar mavjudligi sensorlari va Poka-Yoke toʻsiqlari soz holatdami?" },
-  { section: "5S & Безопасность", question_ru: "Рабочая зона 5S свободна от посторонних предметов, инструмент на своих местах?", question_uz: "5S ish zonasi tartiblangan, asboblar oʻz oʻrnida va xavfsizlik taʼminlanganmi?" },
-  { section: "Fast Response & Red Box", question_ru: "Все выявленные несоответствия изолированы в карантинной зоне (Red Box)?", question_uz: "Aniqlangan barcha nuqsonli qismlar Red Box (Qizil quti) zonasiga izolyatsiya qilinganmi?" }
+  { section: "Standardized Work (SOS)", question: "Рабочий соблюдает последовательность SOS и карту действий?" },
+  { section: "Quality Gate & Затяжка", question: "Выполнен 100% контроль критических моментов затяжки перед передачей?" },
+  { section: "Poka-Yoke & Сенсоры", question: "Оптические датчики наличия деталей и блокираторы оснастки исправны?" },
+  { section: "5S & Безопасность", question: "Рабочая зона свободна от мусора, инструмент на калиброванных подвесах?" },
+  { section: "Red Box & Изоляция", question: "Все выявленные несоответствия изолированы в карантинной зоне Red Box?" }
 ];
 
 document.addEventListener("DOMContentLoaded", () => {
+  startLiveClock();
   checkAuth();
   setupAuthEventListeners();
-  setupWorkerShiftInputHandler();
+  setupWorkerFormHandler();
   setupAndonTriggerHandler();
   setupMechanicResolveHandler();
   setupControllerUnlockHandler();
   setupShiftReportHandler();
-  setupIncomingInspectionHandler();
-  setupReclamationHandler();
-  setupEnergyHandlers();
-  setupFacilityHandler();
-  setupQualityDailyTaskHandlers();
+  setupDirectorApproveHandler();
+  setupHeadReviewHandler();
   setupBiqsAuditHandler();
   setupAdminHandlers();
 });
 
+// ==================== TOAST NOTIFICATIONS ====================
+function showToast(message, type = "info") {
+  const container = document.getElementById("toast-container");
+  if (!container) return;
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  
+  const iconMap = {
+    success: '<i class="fa-solid fa-circle-check" style="color:var(--accent-emerald); font-size:16px;"></i>',
+    error: '<i class="fa-solid fa-circle-xmark" style="color:var(--accent-danger); font-size:16px;"></i>',
+    warning: '<i class="fa-solid fa-triangle-exclamation" style="color:var(--accent-amber); font-size:16px;"></i>',
+    info: '<i class="fa-solid fa-circle-info" style="color:var(--primary-blue); font-size:16px;"></i>'
+  };
+
+  toast.innerHTML = `${iconMap[type] || ""} <span>${escapeHtml(message)}</span>`;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateX(100%)";
+    setTimeout(() => toast.remove(), 300);
+  }, 4000);
+}
+
+// ==================== LIVE DIGITAL CLOCK ====================
+function startLiveClock() {
+  function update() {
+    const el = document.getElementById("live-clock-display");
+    if (!el) return;
+    const now = new Date();
+    el.textContent = now.toTimeString().split(" ")[0];
+  }
+  update();
+  setInterval(update, 1000);
+}
+
 // ==================== AUTHENTICATION & SESSION ====================
 
-function toggleAdminAuth(showAdmin) {
-  const boxInvite = document.getElementById("auth-box-invite");
-  const boxAdmin = document.getElementById("auth-box-admin");
-  if (showAdmin) {
-    boxInvite.classList.add("hidden");
-    boxAdmin.classList.remove("hidden");
-    document.getElementById("input-admin-pass").focus();
-  } else {
-    boxAdmin.classList.add("hidden");
-    boxInvite.classList.remove("hidden");
-    document.getElementById("input-invite-only-code").focus();
+function switchAuthTab(tab) {
+  document.getElementById("btn-tab-auth-cred").classList.remove("active");
+  document.getElementById("btn-tab-auth-invite").classList.remove("active");
+  document.getElementById(`btn-tab-auth-${tab}`).classList.add("active");
+
+  document.getElementById("pane-auth-cred").classList.add("hidden");
+  document.getElementById("pane-auth-invite").classList.add("hidden");
+  document.getElementById(`pane-auth-${tab}`).classList.remove("hidden");
+}
+
+async function quickLoginRole(roleKey) {
+  try {
+    const res = await fetch("/api/auth/quick-role-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role_key: roleKey })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === "success") {
+      currentUser = data.user;
+      showToast(`✅ Добро пожаловать: ${currentUser.full_name}`, "success");
+      await initDashboardForRole(roleKey);
+    } else {
+      showToast(data.detail || "Ошибка авторизации", "error");
+    }
+  } catch (err) {
+    showToast("Ошибка соединения с сервером", "error");
   }
 }
 
-function fillUserCreds(username, password) {
-  toggleAdminAuth(true);
-  const userInp = document.getElementById("input-admin-user");
-  const passInp = document.getElementById("input-admin-pass");
-  if (userInp) userInp.value = username;
-  if (passInp) passInp.value = password;
-}
-
-function fillInviteCode(code) {
-  toggleAdminAuth(false);
-  const input = document.getElementById("input-invite-only-code");
-  input.value = code;
-  input.focus();
+async function checkAuth() {
+  try {
+    const res = await fetch("/api/auth/me");
+    const data = await res.json();
+    if (data.authenticated && data.user) {
+      currentUser = data.user;
+      const roleMap = {
+        operator: "worker",
+        shop_head: "master",
+        director: "director",
+        admin: "director",
+        controller: "worker",
+        engineer: "director",
+        mechanic: "master"
+      };
+      await initDashboardForRole(roleMap[currentUser.role] || "worker");
+    } else {
+      document.getElementById("auth-screen").classList.remove("hidden");
+      document.getElementById("dashboard-screen").classList.add("hidden");
+    }
+  } catch (err) {
+    document.getElementById("auth-screen").classList.remove("hidden");
+  }
 }
 
 async function enterGuestMode() {
@@ -83,47 +146,23 @@ async function enterGuestMode() {
     const data = await res.json();
     if (res.ok && data.status === "success") {
       currentUser = data.user;
-      currentSimulatedRole = "director";
-      showDashboard();
+      showToast("Гостевой режим активирован", "info");
+      await initDashboardForRole("director");
     }
   } catch (err) {
-    alert("Ошибка подключения к серверу");
+    showToast("Ошибка соединения", "error");
   }
 }
 
+async function logoutUser() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } catch (e) {}
+  currentUser = null;
+  location.reload();
+}
+
 function setupAuthEventListeners() {
-  const formInvite = document.getElementById("form-invite-login");
-  if (formInvite) {
-    formInvite.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const invite_code = document.getElementById("input-invite-only-code").value.trim();
-      const full_name = document.getElementById("input-inspector-name").value.trim();
-      const errBox = document.getElementById("invite-login-error");
-      const errTxt = document.getElementById("invite-login-error-text");
-      errBox.classList.add("hidden");
-
-      try {
-        const res = await fetch("/api/auth/invite-code-login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ invite_code, full_name })
-        });
-        const data = await res.json();
-        if (res.ok && data.status === "success") {
-          currentUser = data.user;
-          currentSimulatedRole = currentUser.role;
-          showDashboard();
-        } else {
-          errTxt.textContent = data.detail || "Неверный код приглашения";
-          errBox.classList.remove("hidden");
-        }
-      } catch (err) {
-        errTxt.textContent = "Ошибка соединения с сервером";
-        errBox.classList.remove("hidden");
-      }
-    });
-  }
-
   const formAdmin = document.getElementById("form-admin-login");
   if (formAdmin) {
     formAdmin.addEventListener("submit", async (e) => {
@@ -143,304 +182,224 @@ function setupAuthEventListeners() {
         const data = await res.json();
         if (res.ok && data.status === "success") {
           currentUser = data.user;
-          currentSimulatedRole = currentUser.role;
-          showDashboard();
+          showToast(`✅ Авторизован: ${currentUser.full_name}`, "success");
+          const roleMap = { operator: "worker", shop_head: "master", director: "director", admin: "director" };
+          await initDashboardForRole(roleMap[currentUser.role] || "worker");
         } else {
           errTxt.textContent = data.detail || "Неверный логин или пароль";
           errBox.classList.remove("hidden");
         }
       } catch (err) {
-        errTxt.textContent = "Ошибка соединения с сервером";
+        errTxt.textContent = "Ошибка соединения";
         errBox.classList.remove("hidden");
       }
     });
   }
 
-  const btnLogout = document.getElementById("btn-logout");
-  if (btnLogout) {
-    btnLogout.addEventListener("click", async () => {
-      await fetch("/api/auth/logout", { method: "POST" });
-      location.reload();
+  const formInvite = document.getElementById("form-invite-login");
+  if (formInvite) {
+    formInvite.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const invite_code = document.getElementById("input-invite-only-code").value.trim();
+      const full_name = document.getElementById("input-inspector-name").value.trim();
+      const errBox = document.getElementById("invite-login-error");
+      const errTxt = document.getElementById("invite-login-error-text");
+      errBox.classList.add("hidden");
+
+      try {
+        const res = await fetch("/api/auth/invite-code-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invite_code, full_name })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === "success") {
+          currentUser = data.user;
+          showToast(`✅ Вход по коду: ${currentUser.full_name}`, "success");
+          await initDashboardForRole(currentUser.role === "shop_head" ? "master" : (currentUser.role === "director" ? "director" : "worker"));
+        } else {
+          errTxt.textContent = data.detail || "Неверный код";
+          errBox.classList.remove("hidden");
+        }
+      } catch (err) {
+        errTxt.textContent = "Ошибка соединения";
+        errBox.classList.remove("hidden");
+      }
     });
   }
-
-  const btnExport = document.getElementById("btn-export-pdf");
-  if (btnExport) {
-    btnExport.addEventListener("click", () => window.print());
-  }
 }
 
-async function checkAuth() {
-  try {
-    const res = await fetch("/api/auth/me");
-    const data = await res.json();
-    if (data.authenticated && data.user) {
-      currentUser = data.user;
-      currentSimulatedRole = currentUser.role;
-      showDashboard();
-    } else {
-      document.getElementById("auth-screen").classList.remove("hidden");
-      document.getElementById("dashboard-screen").classList.add("hidden");
-    }
-  } catch (err) {
-    document.getElementById("auth-screen").classList.remove("hidden");
-  }
-}
+// ==================== DASHBOARD INITIALIZATION ====================
 
-async function showDashboard() {
+async function initDashboardForRole(roleKey) {
   document.getElementById("auth-screen").classList.add("hidden");
   document.getElementById("dashboard-screen").classList.remove("hidden");
 
-  // Profile display
-  document.getElementById("user-display-name").textContent = currentUser.full_name || currentUser.username;
-  document.getElementById("user-display-role").textContent = getRoleDisplayName(currentUser.role);
+  // User Header Display
+  const displayName = currentUser ? (currentUser.full_name || currentUser.username) : "Сотрудник";
+  document.getElementById("user-display-name").textContent = displayName;
+  document.getElementById("user-display-role").textContent = getRoleDisplayName(currentUser ? currentUser.role : "operator");
+  document.getElementById("user-avatar-text").textContent = displayName.charAt(0).toUpperCase();
 
-  await loadDepartments();
-  await loadAssemblyLines();
-
-  // Populate Select Boxes
-  populateDepartmentSelects();
-
-  // Setup Role Navigation Access
-  setupNavigationPermissions();
-
-  // Load Corridors according to role
-  await applyRoleCorridor(currentSimulatedRole || currentUser.role);
-
-  // Background data pre-fetches
-  loadAndonFeed();
-  loadShiftReports();
-  loadExecutiveBI();
-  loadWorkerInputs();
-}
-
-function getRoleDisplayName(role) {
-  const names = {
-    director: "Генеральный директор завода",
-    shop_head: "Мастер / Начальник цеха",
-    operator: "Рабочий линии / Оператор",
-    controller: "Контролёр качества ОТК",
-    engineer: "Инженер по качеству (Инженерный статус)",
-    mechanic: "Наладчик-механик ОГМ",
-    mechanic_head: "Главный механик завода (ОГМ)",
-    energy_head: "Главный энергетик завода (ОГЭ)",
-    facility_head: "Начальник АХО",
-    quality_head: "Начальник отдела качества (ОТК)",
-    admin: "Главный Администратор",
-    guest: "Демо-просмотр"
-  };
-  return names[role] || role;
-}
-
-// ==================== ROLE CORRIDOR SIMULATOR ====================
-
-function simulateRoleSwitch(role) {
-  currentSimulatedRole = role;
-  applyRoleCorridor(role);
-}
-
-async function applyRoleCorridor(role) {
-  // Highlight active chip in bar
-  document.querySelectorAll(".corridor-chip-btn").forEach(btn => btn.classList.remove("active", "chip-active-director", "chip-active-quality", "chip-active-master", "chip-active-energy"));
-  const activeBtn = document.getElementById(`chip-role-${role}`);
-  if (activeBtn) {
-    activeBtn.classList.add("active");
-    if (role === "director") activeBtn.classList.add("chip-active-director");
-    if (["engineer", "controller", "quality_head"].includes(role)) activeBtn.classList.add("chip-active-quality");
-    if (role === "shop_head") activeBtn.classList.add("chip-active-master");
-    if (role === "energy_head") activeBtn.classList.add("chip-active-energy");
-  }
-
-  // Update Corridor Banner
-  const titleElem = document.getElementById("corridor-role-title");
-  const descElem = document.getElementById("corridor-role-desc");
-  const pillElem = document.getElementById("corridor-level-pill");
-  const iconElem = document.getElementById("corridor-role-icon");
-
-  // Hide all subviews
-  document.querySelectorAll(".corridor-subview").forEach(v => v.classList.add("hidden"));
-
-  if (role === "operator") {
-    titleElem.textContent = "Рабочее место: Рабочий линии (Сборщик / Сварщик / Штамповщик)";
-    descElem.textContent = "Ваша зона ответственности: соблюдение сменного темпа, чек-лист 5S, фиксация выработки (сколько сделал), количества брака и мгновенный вызов Andon при поломке.";
-    pillElem.textContent = "Операционный уровень";
-    pillElem.className = "status-pill pill-engineer";
-    iconElem.innerHTML = '<i class="fa-solid fa-user"></i>';
-    document.getElementById("corridor-view-worker").classList.remove("hidden");
-    loadWorkerInputs();
-    switchModule("corridor");
-
-  } else if (role === "controller") {
-    titleElem.textContent = "Рабочее место: Контролёр качества ОТК (Линейный надзор)";
-    descElem.textContent = "Ваша зона ответственности: входной контроль сырья/металла на склад, пооперационный контроль на линиях (моменты затяжки SOS, швы), изоляция брака в Red Box и разблокировка линий.";
-    pillElem.textContent = "Линейный надзор ОТК";
-    pillElem.className = "status-pill pill-controller";
-    iconElem.innerHTML = '<i class="fa-solid fa-clipboard-check"></i>';
-    document.getElementById("corridor-view-controller").classList.remove("hidden");
-    switchOtkSubTab("incoming");
-    loadIncomingInspections();
-    switchModule("corridor");
-
-  } else if (role === "engineer") {
-    titleElem.textContent = "Рабочее место: Инженер по качеству (Высший технический статус)";
-    descElem.textContent = "Ваша зона ответственности: анализ статистики брака от контролёров, рекламации автозавода (8D / 5-Why), аудиты ISO/IATF 16949 и формирование суточного рапорта качества.";
-    pillElem.textContent = "Инженерный статус";
-    pillElem.className = "status-pill pill-engineer";
-    iconElem.innerHTML = '<i class="fa-solid fa-microchip"></i>';
-    document.getElementById("corridor-view-engineer").classList.remove("hidden");
-    switchEngSubTab("stats");
-    renderQualityCharts();
-    loadReclamations();
-    switchModule("corridor");
-
-  } else if (["mechanic", "mechanic_head"].includes(role)) {
-    titleElem.textContent = "Рабочее место: Ремонтно-механическая служба (ОГМ / Ремонтники)";
-    descElem.textContent = "Ваша зона ответственности: оперативный выезд по сигналам Andon, устранение кодов ошибок оборудования (KUKA, FANUC), отписка о причине поломки и передача ОТК.";
-    pillElem.textContent = "Служба ТОиР и механики";
-    pillElem.className = "status-pill pill-engineer";
-    iconElem.innerHTML = '<i class="fa-solid fa-screwdriver-wrench"></i>';
-    document.getElementById("corridor-view-mechanic").classList.remove("hidden");
-    loadMechanicRepairs();
-    switchModule("corridor");
-
-  } else if (role === "energy_head") {
-    titleElem.textContent = "Рабочее место: Служба главного энергетика (ОГЭ)";
-    descElem.textContent = "Ваша зона ответственности: бесперебойная подача электричества, газа, воды и сжатого воздуха (6.5-7.5 бар), учет расхода ресурсов и экстренный аварийный сигнал при сбоях.";
-    pillElem.textContent = "Энергослужба завода";
-    pillElem.className = "status-pill pill-engineer";
-    iconElem.innerHTML = '<i class="fa-solid fa-bolt"></i>';
-    document.getElementById("corridor-view-energy").classList.remove("hidden");
-    loadEnergyStatus();
-    switchModule("corridor");
-
-  } else if (role === "facility_head") {
-    titleElem.textContent = "Рабочее место: Административно-хозяйственный отдел (АХО)";
-    descElem.textContent = "Ваша зона ответственности: контроль чистоты цехов и территории, работа заводской столовой (саннормы), охрана периметра, вывоз отходов и решение хоззаявок мастеров.";
-    pillElem.textContent = "Хозяйственная служба";
-    pillElem.className = "status-pill pill-controller";
-    iconElem.innerHTML = '<i class="fa-solid fa-broom"></i>';
-    document.getElementById("corridor-view-facility").classList.remove("hidden");
-    loadFacilityChecklists();
-    switchModule("corridor");
-
-  } else if (role === "shop_head") {
-    switchModule("master");
-    loadMasterDashboard();
-
-  } else if (role === "director") {
-    switchModule("executive");
-    loadExecutiveBI();
-  }
-}
-
-// ==================== MODULE SWITCHER ====================
-
-function switchModule(moduleKey) {
-  // Highlight nav button
-  document.querySelectorAll(".module-nav-btn").forEach(btn => btn.classList.remove("active"));
-  const navBtn = document.getElementById(`nav-btn-${moduleKey}`);
-  if (navBtn) navBtn.classList.add("active");
-
-  // Hide all sections
-  document.querySelectorAll(".module-section").forEach(sec => sec.classList.add("hidden"));
-
-  const targetSection = document.getElementById(`section-${moduleKey}`);
-  if (targetSection) targetSection.classList.remove("hidden");
-
-  // Trigger data reload depending on module
-  if (moduleKey === "master") loadMasterDashboard();
-  if (moduleKey === "andon") loadAndonFeed();
-  if (moduleKey === "shift_reports") loadShiftReports();
-  if (moduleKey === "executive") loadExecutiveBI();
-  if (moduleKey === "mod5") loadDailyQualityTasks();
-  if (moduleKey === "mod2") loadAudits();
-  if (moduleKey === "mod4") loadAdminKeys();
-}
-
-function setupNavigationPermissions() {
-  const navAdmin = document.getElementById("nav-btn-mod4");
+  // Show/Hide Admin Nav Tab
+  const navAdmin = document.getElementById("nav-btn-admin");
   if (navAdmin) {
-    if (currentUser.role === "admin") {
+    if (currentUser && currentUser.role === "admin") {
       navAdmin.classList.remove("hidden");
     } else {
       navAdmin.classList.add("hidden");
     }
   }
+
+  // Load Base Plant Configuration
+  await loadDepartments();
+  await loadAssemblyLines();
+  populateGlobalSelects();
+
+  // Switch to the target workspace
+  switchMainWorkspace(roleKey);
 }
 
-// ==================== DEPARTMENTS & SELECTS ====================
+function getRoleDisplayName(role) {
+  const map = {
+    operator: "Работник / Оператор",
+    shop_head: "Начальник цеха / Мастер",
+    director: "Генеральный директор",
+    controller: "Контролёр качества ОТК",
+    engineer: "Инженер по качеству BIQS",
+    mechanic: "Наладчик-механик ОГМ",
+    energy_head: "Главный энергетик завода",
+    facility_head: "Начальник АХО",
+    admin: "Главный Администратор",
+    guest: "Гостевой просмотр (Демо)"
+  };
+  return map[role] || role;
+}
 
-async function loadDepartments() {
-  try {
-    const res = await fetch("/api/departments");
-    const data = await res.json();
-    allDepartments = data.departments || [];
-  } catch (err) {
-    console.error("Error loading departments", err);
+// ==================== MAIN WORKSPACE NAVIGATION ====================
+
+function switchMainWorkspace(wsKey) {
+  currentWorkspace = wsKey;
+
+  // Highlight navigation tab
+  document.querySelectorAll(".ws-nav-btn").forEach(btn => btn.classList.remove("active"));
+  const navBtn = document.getElementById(`nav-btn-${wsKey}`);
+  if (navBtn) navBtn.classList.add("active");
+
+  // Update switcher pills
+  document.querySelectorAll(".role-switch-btn").forEach(p => p.classList.remove("active"));
+  const pill = document.getElementById(`pill-ws-${wsKey}`);
+  if (pill) pill.classList.add("active");
+
+  // Hide all sections, show target
+  document.querySelectorAll(".workspace-section").forEach(sec => sec.classList.add("hidden"));
+  const targetSection = document.getElementById(`section-${wsKey}`);
+  if (targetSection) targetSection.classList.remove("hidden");
+
+  // Load relevant data
+  if (wsKey === "worker") {
+    loadWorkerDashboard();
+  } else if (wsKey === "master") {
+    loadMasterDashboard();
+  } else if (wsKey === "director") {
+    loadExecutiveBI();
+  } else if (wsKey === "andon") {
+    loadAndonFeed();
+  } else if (wsKey === "shift_reports") {
+    loadShiftReports();
+  } else if (wsKey === "biqs") {
+    loadAudits();
+  } else if (wsKey === "admin") {
+    loadAdminKeys();
   }
 }
 
-async function loadAssemblyLines() {
-  try {
-    const res = await fetch("/api/lines");
-    const data = await res.json();
-    allAssemblyLines = data.lines || [];
-  } catch (err) {
-    console.error("Error loading assembly lines", err);
+// ==================== 1. WORKER WORKSTATION LOGIC ====================
+
+let workerMadeUnits = 10;
+let workerDefects = 0;
+
+function adjustWorkerUnits(delta) {
+  workerMadeUnits = Math.max(0, workerMadeUnits + delta);
+  document.getElementById("worker-made-display").textContent = workerMadeUnits;
+  document.getElementById("wsi-made").value = workerMadeUnits;
+}
+
+function adjustWorkerDefects(delta) {
+  workerDefects = Math.max(0, workerDefects + delta);
+  document.getElementById("worker-defects-display").textContent = workerDefects;
+  document.getElementById("wsi-defects").value = workerDefects;
+}
+
+function selectDefectTag(reason) {
+  document.getElementById("wsi-reason").value = reason;
+  adjustWorkerDefects(1);
+  showToast(`Выбран дефект: ${reason}`, "warning");
+}
+
+function onChecklistChange() {
+  const c1 = document.getElementById("chk-5s").checked;
+  const c2 = document.getElementById("chk-poka").checked;
+  const c3 = document.getElementById("chk-tool").checked;
+  const c4 = document.getElementById("chk-parts").checked;
+  if (!c1 || !c2 || !c3 || !c4) {
+    showToast("Внимание: для допуска к работе все 4 пункта 5S должны быть включены", "warning");
   }
 }
 
-function populateDepartmentSelects() {
-  const optionsHtml = allDepartments.map(d => `<option value="${d.id}">${d.code}: ${d.name_ru}</option>`).join("");
-
-  const wsiDept = document.getElementById("wsi-dept");
-  if (wsiDept) { wsiDept.innerHTML = optionsHtml; onWorkerDeptChange(); }
-
-  const andonDept = document.getElementById("andon-target-dept");
-  if (andonDept) { andonDept.innerHTML = optionsHtml; onAndonDeptChange(); }
-
-  const filterAndonDept = document.getElementById("filter-andon-dept");
-  if (filterAndonDept) { filterAndonDept.innerHTML = '<option value="all">Все цеха (Сводный вид)</option>' + optionsHtml; }
-
-  const srDept = document.getElementById("sr-dept");
-  if (srDept) { srDept.innerHTML = optionsHtml; }
-
-  const newQDept = document.getElementById("new-quality-dept");
-  if (newQDept) { newQDept.innerHTML = optionsHtml; onQualityTaskDeptChange(); }
-
-  const auditDept = document.getElementById("audit-dept-select");
-  if (auditDept) { auditDept.innerHTML = optionsHtml; }
-
-  const keyDept = document.getElementById("key-dept-select");
-  if (keyDept) { keyDept.innerHTML = '<option value="all">Все цеха</option>' + optionsHtml; }
+function saveWorkerChecklist() {
+  const c1 = document.getElementById("chk-5s").checked;
+  const c2 = document.getElementById("chk-poka").checked;
+  const c3 = document.getElementById("chk-tool").checked;
+  const c4 = document.getElementById("chk-parts").checked;
+  if (c1 && c2 && c3 && c4) {
+    showToast("✅ Чек-лист смены 5S и Poka-Yoke успешно подтвержден!", "success");
+  } else {
+    showToast("⚠️ Чек-лист сохранен с замечаниями. Устраните несоответствия!", "warning");
+  }
 }
 
-function onWorkerDeptChange() {
-  const deptId = document.getElementById("wsi-dept").value;
-  const lineSelect = document.getElementById("wsi-line");
-  const filtered = allAssemblyLines.filter(l => l.department_id === deptId);
-  lineSelect.innerHTML = filtered.length ? filtered.map(l => `<option value="${l.name}">${l.name}</option>`).join("") : '<option value="Общий пост цеха">Общий пост цеха</option>';
+async function loadWorkerDashboard(targetLine) {
+  try {
+    let url = "/api/worker/dashboard";
+    if (targetLine) url += `?line_name=${encodeURIComponent(targetLine)}`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Dashboard error");
+    const data = await res.json();
+
+    // Banner texts
+    const titleEl = document.getElementById("worker-title-name");
+    if (titleEl) titleEl.textContent = `Рабочий стол: ${data.worker_name}`;
+
+    const deptBadge = document.getElementById("worker-dept-badge");
+    if (deptBadge) deptBadge.textContent = `${data.department.name_ru} (${data.department.code})`;
+
+    // Progress bar
+    const progressText = document.getElementById("worker-progress-percent");
+    if (progressText) {
+      progressText.textContent = `${data.today_made} / ${data.target_pace} шт (${data.completion_rate}%)`;
+    }
+    const progressFill = document.getElementById("worker-progress-bar-fill");
+    if (progressFill) {
+      progressFill.style.width = `${Math.min(data.completion_rate, 100)}%`;
+    }
+
+    const lineText = document.getElementById("worker-line-target-text");
+    if (lineText) lineText.textContent = data.current_line;
+
+    // Load recent worker inputs table
+    loadWorkerInputs();
+
+  } catch (err) {
+    console.error("Error loading worker dashboard", err);
+  }
 }
 
-function onAndonDeptChange() {
-  const deptId = document.getElementById("andon-target-dept").value;
-  const lineSelect = document.getElementById("andon-line-name");
-  const filtered = allAssemblyLines.filter(l => l.department_id === deptId);
-  lineSelect.innerHTML = filtered.length ? filtered.map(l => `<option value="${l.name}">${l.name}</option>`).join("") : '<option value="Главная линия">Главная линия</option>';
-}
-
-function onQualityTaskDeptChange() {
-  const deptId = document.getElementById("new-quality-dept").value;
-  const lineSelect = document.getElementById("new-quality-line");
-  const filtered = allAssemblyLines.filter(l => l.department_id === deptId);
-  lineSelect.innerHTML = filtered.length ? filtered.map(l => `<option value="${l.name}">${l.name}</option>`).join("") : '<option value="Пост контроля">Пост контроля</option>';
-}
-
-// ==================== WORKER TERMINAL LOGIC ====================
-
-function setupWorkerShiftInputHandler() {
+function setupWorkerFormHandler() {
   const form = document.getElementById("form-worker-shift-input");
   if (!form) return;
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
@@ -461,15 +420,18 @@ function setupWorkerShiftInputHandler() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert("✅ " + data.message);
-        form.reset();
-        loadWorkerInputs();
-        loadExecutiveBI();
+        showToast(`✅ Зафиксировано: +${payload.units_made} деталей в журнал!`, "success");
+        // Reset counters back to standard default
+        adjustWorkerUnits(10 - workerMadeUnits);
+        adjustWorkerDefects(0 - workerDefects);
+        document.getElementById("wsi-reason").value = "";
+        document.getElementById("wsi-breakdown").value = "";
+        loadWorkerDashboard(payload.line_name);
       } else {
-        alert("Ошибка: " + (data.detail || "Не удалось сохранить"));
+        showToast(data.detail || "Ошибка при сохранении", "error");
       }
     } catch (err) {
-      alert("Ошибка отправки данных");
+      showToast("Ошибка отправки данных", "error");
     }
   });
 }
@@ -482,18 +444,18 @@ async function loadWorkerInputs() {
     const data = await res.json();
     const rows = data.inputs || [];
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:16px;">Нет записей за смену. Введите данные выработки выше.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:16px;">Нет записей за смену. Нажмите «Зафиксировать выработку» выше.</td></tr>';
       return;
     }
     tbody.innerHTML = rows.map(r => `
       <tr>
-        <td style="font-size:12px; font-weight:700;">${r.created_at ? r.created_at.slice(11, 16) : '--:--'}</td>
-        <td><strong>${r.line_name}</strong></td>
-        <td>${r.article}</td>
-        <td><span class="badge-tag badge-blue" style="font-size:13px; font-weight:800;">${r.units_made} шт</span></td>
+        <td style="font-weight:700; font-size:12px;">${r.created_at ? r.created_at.slice(11, 16) : '--:--'}</td>
+        <td><strong>${escapeHtml(r.line_name)}</strong></td>
+        <td>${escapeHtml(r.article)}</td>
+        <td><span class="badge-tag badge-blue" style="font-weight:800;">${r.units_made} шт</span></td>
         <td><span class="badge-tag ${r.defects_count > 0 ? 'badge-red' : 'badge-green'}">${r.defects_count} шт</span></td>
-        <td>${r.defect_reason || '<span style="color:#94a3b8;">нет брака</span>'}</td>
-        <td>${r.breakdown_notes || '<span style="color:#94a3b8;">работа без сбоев</span>'}</td>
+        <td>${escapeHtml(r.defect_reason || '—')}</td>
+        <td>${escapeHtml(r.breakdown_notes || 'В норме')}</td>
       </tr>
     `).join("");
   } catch (err) {
@@ -501,7 +463,493 @@ async function loadWorkerInputs() {
   }
 }
 
-// ==================== ANDON & ESCALATION SYSTEM ====================
+// ==================== 2. MASTER WORKSHOP LOGIC ====================
+
+let currentMasterDept = "ws-assembly";
+
+function onMasterDeptChange(deptId) {
+  currentMasterDept = deptId;
+  loadMasterDashboard(deptId);
+}
+
+async function loadMasterDashboard(selectedDept) {
+  const targetDept = selectedDept || currentMasterDept;
+  currentMasterDept = targetDept;
+
+  const filterEl = document.getElementById("master-dept-filter");
+  if (filterEl && filterEl.value !== targetDept) {
+    filterEl.value = targetDept;
+  }
+
+  try {
+    const res = await fetch(`/api/master/dashboard?department_id=${encodeURIComponent(targetDept)}`);
+    if (!res.ok) throw new Error("Master dashboard error");
+    const data = await res.json();
+
+    const info = data.department_info || {};
+    const sum = data.summary || {};
+
+    // Header Passport
+    const titleEl = document.getElementById("master-shop-title");
+    if (titleEl) titleEl.textContent = info.name_ru || "Производственный цех";
+
+    const codeBadge = document.getElementById("master-shop-code-badge");
+    if (codeBadge) codeBadge.textContent = info.code || "WS";
+
+    const headInfo = document.getElementById("master-shop-head-info");
+    if (headInfo) {
+      headInfo.textContent = `Начальник цеха: ${info.head_name || 'Мастер'} | GM BIQS Стандарт: ${info.compliance_score || 96.0}% | Состояние: ${info.status || 'В норме'}`;
+    }
+
+    // 4 KPI Counters
+    const planEl = document.getElementById("master-plan-val");
+    if (planEl) planEl.textContent = `${sum.total_plan || 0} шт`;
+
+    const factEl = document.getElementById("master-fact-val");
+    if (factEl) factEl.textContent = `${sum.total_fact || 0} шт`;
+
+    const rateEl = document.getElementById("master-rate-val");
+    if (rateEl) rateEl.textContent = `${sum.completion_rate || 0}%`;
+
+    const scrapEl = document.getElementById("master-scrap-val");
+    if (scrapEl) scrapEl.textContent = `${sum.total_scrap || 0} шт`;
+
+    const downEl = document.getElementById("master-downtime-val");
+    if (downEl) downEl.textContent = `${sum.total_downtime || 0} мин`;
+
+    // Lines table
+    const linesRows = document.getElementById("master-lines-progress-rows");
+    if (linesRows) {
+      const lines = data.lines || [];
+      if (!lines.length) {
+        linesRows.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">В цеху нет активных линий</td></tr>';
+      } else {
+        linesRows.innerHTML = lines.map(l => {
+          const rate = l.rate != null ? l.rate : 0;
+          let statusBadge = '<span class="badge-tag badge-green">🟢 В норме</span>';
+          if (l.status === 'Остановка / Ремонт') statusBadge = '<span class="badge-tag badge-red">🚨 Остановка</span>';
+          if (l.status === 'План выполнен') statusBadge = '<span class="badge-tag badge-blue">✓ Выполнен</span>';
+
+          return `
+            <tr>
+              <td><strong>${escapeHtml(l.line_name)}</strong></td>
+              <td>${escapeHtml(l.description)}</td>
+              <td>${l.plan} шт</td>
+              <td><strong style="color:var(--primary-blue);">${l.fact} шт</strong></td>
+              <td>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <div style="flex:1; background:#e2e8f0; height:8px; border-radius:4px; overflow:hidden;">
+                    <div style="width:${Math.min(rate, 100)}%; background:${rate >= 90 ? '#10b981' : rate >= 50 ? '#2563eb' : '#f59e0b'}; height:100%;"></div>
+                  </div>
+                  <span style="font-size:12px; font-weight:800;">${rate}%</span>
+                </div>
+              </td>
+              <td><span class="badge-tag ${l.scrap > 0 ? 'badge-red' : 'badge-green'}">${l.scrap} шт</span></td>
+              <td><span class="badge-tag ${l.downtime > 0 ? 'badge-amber' : 'badge-green'}">${l.downtime} мин</span></td>
+              <td>${statusBadge}</td>
+            </tr>
+          `;
+        }).join("");
+      }
+    }
+
+    // Active Andon Issues in Workshop
+    const issuesBadge = document.getElementById("master-issues-badge");
+    const issuesBox = document.getElementById("master-active-issues-box");
+    const issues = data.active_issues || [];
+
+    if (issuesBadge) {
+      issuesBadge.textContent = `${issues.length} инцидентов`;
+      issuesBadge.className = `badge-tag ${issues.length > 0 ? 'badge-red' : 'badge-green'}`;
+    }
+
+    if (issuesBox) {
+      if (!issues.length) {
+        issuesBox.innerHTML = '<p style="color:#059669; font-size:13px; font-weight:700;"><i class="fa-solid fa-circle-check"></i> Все технологические посты цеха работают стабильно. Оцепок Andon нет.</p>';
+      } else {
+        issuesBox.innerHTML = issues.map(iss => `
+          <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:14px; font-weight:800; color:#991b1b;">${escapeHtml(iss.ticket_number)}: ${escapeHtml(iss.line_name)}</div>
+              <div style="font-size:12px; color:#b91c1c;">${escapeHtml(iss.defect_type)} (${iss.downtime_minutes} мин простоя)</div>
+              <div style="font-size:12px; color:#475569; margin-top:2px;">${escapeHtml(iss.description)}</div>
+            </div>
+            <button type="button" class="btn-compact-action" style="background:#ef4444;" onclick="openMechanicResolveModal('${iss.id}')">
+              <i class="fa-solid fa-wrench"></i> Направить ОГМ
+            </button>
+          </div>
+        `).join("");
+      }
+    }
+
+    // Shift report summary
+    const repBox = document.getElementById("master-report-summary-box");
+    const repBadge = document.getElementById("master-report-status-badge");
+    const rep = data.recent_report;
+    if (rep) {
+      if (repBadge) {
+        repBadge.textContent = rep.status === "approved_by_director" ? "Утверждён Директором" : (rep.status === "reviewed_by_head" ? "Завизирован" : "Сдан мастером");
+        repBadge.className = `badge-tag ${rep.status === 'approved_by_director' ? 'badge-green' : 'badge-amber'}`;
+      }
+      if (repBox) {
+        repBox.innerHTML = `
+          <div><strong>Дата:</strong> ${rep.report_date} (${rep.shift}) | <strong>Выпуск:</strong> ${rep.fact_units} из ${rep.plan_units} шт (${((rep.fact_units/rep.plan_units)*100).toFixed(1)}%)</div>
+          <div><strong>Инциденты:</strong> ${escapeHtml(rep.issues_summary || 'Без существенных отклонений')}</div>
+          ${rep.director_verdict ? `<div style="margin-top:6px; background:#eff6ff; padding:8px 12px; border-left:4px solid var(--primary-blue); border-radius:4px;"><strong>Резолюция Генерального директора:</strong> ${escapeHtml(rep.director_verdict)}</div>` : ''}
+        `;
+      }
+    } else {
+      if (repBadge) repBadge.textContent = "Не сдан";
+      if (repBox) repBox.textContent = "Рапорт за смену еще не сдан. Нажмите «Сдать сменный рапорт цеха» выше.";
+    }
+
+  } catch (err) {
+    console.error("Error loading master dashboard", err);
+  }
+}
+
+// ==================== 3. EXECUTIVE DIRECTOR LOGIC (ALL FACTORY WITH CHARTS) ====================
+
+async function loadExecutiveBI() {
+  try {
+    const res = await fetch("/api/executive/bi");
+    if (!res.ok) throw new Error("BI API error");
+    const data = await res.json();
+
+    // 1. Output KPI
+    const prod = data.total_production_number || {};
+    document.getElementById("bi-total-production").textContent = `${prod.fact || 0} шт.`;
+    document.getElementById("bi-prod-rate").textContent = `${prod.rate || 0}%`;
+    document.getElementById("bi-prod-plan-sub").textContent = `План завода: ${prod.plan || 0} комплектов сидений`;
+
+    // 2. Defect KPI
+    const def = data.total_defect_rate || {};
+    document.getElementById("bi-defect-rate").textContent = `${def.percent || 0}%`;
+    document.getElementById("bi-ppm-badge").textContent = `${def.ppm || 0} PPM`;
+    document.getElementById("bi-scrap-units-sub").textContent = `Всего ${def.total_scrap_units || 0} отбракованных узлов изолировано в Red Box`;
+
+    // 3. OEE KPI
+    const oee = data.oee || {};
+    document.getElementById("bi-oee-val").textContent = `${oee.overall_oee || 0}%`;
+    document.getElementById("bi-oee-avail").textContent = `${oee.availability || 0}%`;
+    document.getElementById("bi-oee-perf").textContent = `${oee.performance || 0}%`;
+    document.getElementById("bi-oee-qual").textContent = `${oee.quality || 0}%`;
+
+    // 4. Financial Loss
+    const fin = data.financial_loss || {};
+    const lossMil = (fin.total_loss_uzs / 1000000).toFixed(2);
+    document.getElementById("bi-total-loss").textContent = `${lossMil} млн сум`;
+    document.getElementById("bi-loss-usd").textContent = `$${fin.total_loss_usd || 0} USD`;
+
+    // 5. 30-min Critical Escalation Alert
+    const alertBox = document.getElementById("director-escalation-alert-box");
+    const escalated = data.escalated_critical_issues || [];
+    if (escalated.length > 0) {
+      const topEsc = escalated[0];
+      document.getElementById("escalation-banner-title").textContent = `🚨 КРИТИЧЕСКАЯ ЭСКАЛАЦИЯ ДИРЕКТОРУ: Простой линии более ${topEsc.downtime_minutes} минут!`;
+      document.getElementById("escalation-banner-desc").textContent = `Цех: ${topEsc.dept_name_ru || topEsc.department_id} • Линия: ${topEsc.line_name} • Проблема: ${topEsc.defect_type}`;
+      document.getElementById("escalation-banner-time").textContent = `Простой: ${topEsc.downtime_minutes} мин`;
+      alertBox.classList.remove("hidden");
+    } else {
+      alertBox.classList.add("hidden");
+    }
+
+    // 6. Draw 4 Interactive Charts
+    renderDirectorCharts(data);
+
+    // 7. Factory Floor Live 9-Card Grid
+    renderFactoryFloorCards(data.bottlenecks || []);
+
+    // 8. Bottlenecks Table
+    renderBottlenecksTable(data.bottlenecks || []);
+
+  } catch (err) {
+    console.error("Error loading executive BI", err);
+  }
+}
+
+function renderDirectorCharts(biData) {
+  // Global Chart.js styling for Dark Theme
+  Chart.defaults.color = '#94a3b8';
+  Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.07)';
+  Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
+
+  // Chart 1: Hourly Production Line Chart
+  const ctxHourly = document.getElementById("chartHourlyProduction");
+  if (ctxHourly) {
+    const hourly = biData.hourly_production || [];
+    const labels = hourly.map(h => h.hour);
+    const planData = hourly.map(h => h.plan);
+    const factData = hourly.map(h => h.fact);
+
+    if (chartHourlyInstance) chartHourlyInstance.destroy();
+    chartHourlyInstance = new Chart(ctxHourly, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "Фактический выпуск завода (шт)",
+            data: factData,
+            borderColor: "#38bdf8",
+            backgroundColor: "rgba(56, 189, 248, 0.15)",
+            borderWidth: 3,
+            fill: true,
+            tension: 0.35,
+            pointBackgroundColor: "#0284c7",
+            pointBorderColor: "#38bdf8",
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6
+          },
+          {
+            label: "Плановый темп завода (шт)",
+            data: planData,
+            borderColor: "#64748b",
+            borderWidth: 2,
+            borderDash: [5, 5],
+            fill: false,
+            tension: 0.1,
+            pointRadius: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { position: "top", labels: { color: "#cbd5e1", boxWidth: 12, font: { weight: "600", size: 11 } } },
+          tooltip: {
+            backgroundColor: "rgba(15, 23, 42, 0.95)",
+            titleColor: "#f8fafc",
+            bodyColor: "#cbd5e1",
+            borderColor: "rgba(56, 189, 248, 0.3)",
+            borderWidth: 1
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: false,
+            grid: { color: "rgba(255, 255, 255, 0.06)" },
+            ticks: { color: "#94a3b8" }
+          },
+          x: {
+            grid: { color: "rgba(255, 255, 255, 0.03)" },
+            ticks: { color: "#94a3b8" }
+          }
+        }
+      }
+    });
+  }
+
+  // Chart 2: Workshop Output Bar Chart
+  const ctxShop = document.getElementById("chartWorkshopOutput");
+  if (ctxShop) {
+    const bnecks = (biData.bottlenecks || []).filter(b => b.plan > 10);
+    const labels = bnecks.map(b => b.name_ru.split(" ")[0]);
+    const planData = bnecks.map(b => b.plan);
+    const factData = bnecks.map(b => b.fact);
+
+    if (chartWorkshopInstance) chartWorkshopInstance.destroy();
+    chartWorkshopInstance = new Chart(ctxShop, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "Факт (шт)",
+            data: factData,
+            backgroundColor: "#10b981",
+            borderRadius: 6
+          },
+          {
+            label: "План (шт)",
+            data: planData,
+            backgroundColor: "rgba(148, 163, 184, 0.3)",
+            borderColor: "rgba(148, 163, 184, 0.5)",
+            borderWidth: 1,
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "top", labels: { color: "#cbd5e1", boxWidth: 12, font: { weight: "600", size: 11 } } },
+          tooltip: {
+            backgroundColor: "rgba(15, 23, 42, 0.95)",
+            titleColor: "#f8fafc",
+            bodyColor: "#cbd5e1",
+            borderColor: "rgba(16, 185, 129, 0.3)",
+            borderWidth: 1
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(255, 255, 255, 0.06)" },
+            ticks: { color: "#94a3b8" }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: "#94a3b8" }
+          }
+        }
+      }
+    });
+  }
+
+  // Chart 3: Defect Pareto Doughnut Chart
+  const ctxDefect = document.getElementById("chartDefectPareto");
+  if (ctxDefect) {
+    const defects = biData.defect_categories || [];
+    const labels = defects.map(d => d.name);
+    const counts = defects.map(d => d.count);
+    const colors = defects.map(d => d.color || "#0284c7");
+
+    if (chartDefectParetoInstance) chartDefectParetoInstance.destroy();
+    chartDefectParetoInstance = new Chart(ctxDefect, {
+      type: "doughnut",
+      data: {
+        labels: labels,
+        datasets: [{
+          data: counts,
+          backgroundColor: colors,
+          borderWidth: 2,
+          borderColor: "#0f172a"
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "bottom", labels: { color: "#cbd5e1", boxWidth: 10, font: { size: 11 } } },
+          tooltip: {
+            backgroundColor: "rgba(15, 23, 42, 0.95)",
+            titleColor: "#f8fafc",
+            bodyColor: "#cbd5e1",
+            borderColor: "rgba(255, 255, 255, 0.15)",
+            borderWidth: 1
+          }
+        },
+        cutout: "65%"
+      }
+    });
+  }
+
+  // Chart 4: Downtime Reasons Horizontal Bar
+  const ctxDown = document.getElementById("chartDowntimeReasons");
+  if (ctxDown) {
+    const downtime = biData.downtime_by_reason || [];
+    const labels = downtime.map(d => d.reason);
+    const minutes = downtime.map(d => d.minutes);
+    const colors = downtime.map(d => d.color || "#ef4444");
+
+    if (chartDowntimeInstance) chartDowntimeInstance.destroy();
+    chartDowntimeInstance = new Chart(ctxDown, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{
+          label: "Простой (минут)",
+          data: minutes,
+          backgroundColor: colors,
+          borderRadius: 6
+        }]
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: "rgba(15, 23, 42, 0.95)",
+            titleColor: "#f8fafc",
+            bodyColor: "#cbd5e1",
+            borderColor: "rgba(239, 68, 68, 0.3)",
+            borderWidth: 1
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            grid: { color: "rgba(255, 255, 255, 0.06)" },
+            ticks: { color: "#94a3b8" }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: "#94a3b8" }
+          }
+        }
+      }
+    });
+  }
+}
+
+function renderFactoryFloorCards(departments) {
+  const container = document.getElementById("factory-floors-grid");
+  if (!container) return;
+
+  container.innerHTML = departments.map(d => {
+    const rate = d.plan > 0 ? ((d.fact / d.plan) * 100).toFixed(1) : 100;
+    const isAlert = d.downtime > 20 || d.scrap > 3;
+
+    return `
+      <div class="floor-card" onclick="openWorkshopFromDirector('${d.id}')">
+        <div class="floor-card-top">
+          <span class="floor-code-badge">${d.code}</span>
+          <span class="badge-tag ${isAlert ? 'badge-red' : 'badge-green'}">
+            ${isAlert ? '⚠️ Внимание' : '🟢 В норме'}
+          </span>
+        </div>
+        <div class="floor-name-title">${escapeHtml(d.name_ru)}</div>
+        <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">Начальник: ${escapeHtml(d.head_name)}</div>
+        <div class="floor-stats-row">
+          <span>Выпуск: <strong>${d.fact} / ${d.plan}</strong> (${rate}%)</span>
+          <span>Простой: <strong style="color:${d.downtime > 0 ? 'var(--accent-amber)' : 'var(--accent-emerald)'};">${d.downtime}м</strong></span>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function openWorkshopFromDirector(deptId) {
+  currentMasterDept = deptId;
+  switchMainWorkspace("master");
+  showToast(`Открыт цех: ${deptId}`, "info");
+}
+
+function renderBottlenecksTable(bottlenecks) {
+  const tbody = document.getElementById("bi-bottlenecks-rows");
+  if (!tbody) return;
+
+  tbody.innerHTML = bottlenecks.map(b => {
+    const rate = b.plan > 0 ? ((b.fact / b.plan) * 100).toFixed(1) : 100;
+    const isNorm = b.downtime <= 15 && b.scrap <= 3;
+
+    return `
+      <tr>
+        <td><strong>${escapeHtml(b.name_ru)}</strong> (${b.code})</td>
+        <td>${escapeHtml(b.head_name)}</td>
+        <td>${b.plan} шт</td>
+        <td><strong style="color:var(--primary-blue);">${b.fact} шт</strong></td>
+        <td><span class="badge-tag ${rate >= 95 ? 'badge-green' : 'badge-amber'}">${rate}%</span></td>
+        <td><span class="badge-tag ${b.scrap > 2 ? 'badge-red' : 'badge-green'}">${b.scrap} шт</span></td>
+        <td><span class="badge-tag ${b.downtime > 15 ? 'badge-red' : (b.downtime > 0 ? 'badge-amber' : 'badge-green')}">${b.downtime} мин</span></td>
+        <td>
+          <button type="button" class="btn-compact-action" style="font-size:11px;" onclick="openWorkshopFromDirector('${b.id}')">
+            Открыть цех →
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+// ==================== ANDON SYSTEM LOGIC ====================
 
 function openAndonTriggerModal() {
   document.getElementById("modal-andon-trigger").classList.remove("hidden");
@@ -510,6 +958,7 @@ function openAndonTriggerModal() {
 function setupAndonTriggerHandler() {
   const form = document.getElementById("form-andon-trigger");
   if (!form) return;
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
@@ -530,115 +979,86 @@ function setupAndonTriggerHandler() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert("🚨 СИГНАЛ ANDON ПРИНЯТ: №" + data.ticket_number + "\nОповещение разослано ремонтникам ОГМ и мастеру цеха!");
+        showToast(`🚨 СИГНАЛ ANDON №${data.ticket_number} ПРИНЯТ! Службы оповещены.`, "warning");
         closeModal("modal-andon-trigger");
         form.reset();
         loadAndonFeed();
-        loadExecutiveBI();
+        if (currentWorkspace === "master") loadMasterDashboard();
+        if (currentWorkspace === "director") loadExecutiveBI();
       } else {
-        alert("Ошибка: " + data.detail);
+        showToast(data.detail || "Ошибка вызова Andon", "error");
       }
     } catch (err) {
-      alert("Ошибка отправки сигнала Andon");
+      showToast("Ошибка отправки сигнала", "error");
     }
   });
 }
 
 async function loadAndonFeed() {
   const container = document.getElementById("andon-feed-container");
-  const deptFilter = document.getElementById("filter-andon-dept") ? document.getElementById("filter-andon-dept").value : "all";
   try {
-    const res = await fetch(`/api/andon/feed?department_id=${deptFilter}`);
+    const res = await fetch("/api/andon/feed");
     const data = await res.json();
     allAndonEvents = data.events || [];
     const stats = data.stats || {};
 
-    const activeBadge = document.getElementById("nav-andon-active-badge");
-    if (activeBadge) {
+    const badge = document.getElementById("nav-andon-badge");
+    if (badge) {
       if (stats.active_stops > 0) {
-        activeBadge.textContent = stats.active_stops;
-        activeBadge.style.display = "inline-block";
+        badge.textContent = stats.active_stops;
+        badge.style.display = "inline-block";
       } else {
-        activeBadge.style.display = "none";
+        badge.style.display = "none";
       }
     }
 
     if (!container) return;
     if (!allAndonEvents.length) {
-      container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:40px; color:#64748b; background:#fff; border-radius:12px;">✅ Все линии работают в штатном режиме. Активных аварий нет.</div>';
+      container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:30px; background:#fff; border-radius:12px; color:#64748b;">✅ Все линии завода работают в норме. Активных остановок нет.</div>';
       return;
     }
 
     container.innerHTML = allAndonEvents.map(ev => {
-      const isEscalated = ev.escalated_to_director || ev.current_downtime_minutes >= 30;
       const isClosed = ev.status === "closed";
-      const isVerification = ev.status === "verification";
-
-      let statusBadge = '<span class="badge-tag badge-red">🚨 Линия остановлена</span>';
-      if (isVerification) statusBadge = '<span class="badge-tag badge-gold">⚙️ Ремонт выполнен, проверка ОТК</span>';
-      if (isClosed) statusBadge = '<span class="badge-tag badge-green">✅ Разблокирована</span>';
+      const isVerif = ev.status === "verification";
+      const isEsc = ev.escalated_to_director || ev.current_downtime_minutes >= 30;
 
       return `
-        <div class="andon-card ${isClosed ? 'andon-closed' : (isEscalated ? 'andon-escalated' : (isVerification ? 'andon-verified' : 'andon-critical'))}">
+        <div class="andon-card ${isClosed ? 'andon-closed' : (isEsc ? 'andon-escalated' : (isVerif ? 'andon-verified' : 'andon-critical'))}">
           <div class="andon-card-header">
             <span class="andon-ticket-pill">${ev.ticket_number}</span>
-            <div style="display:flex; gap:6px; align-items:center;">
-              ${statusBadge}
-              <span class="andon-downtime-badge ${isEscalated ? 'badge-escalated' : ''}">
-                <i class="fa-solid fa-clock"></i> ${ev.current_downtime_minutes} мин
-              </span>
-            </div>
+            <span class="badge-tag ${isClosed ? 'badge-green' : (isVerif ? 'badge-amber' : 'badge-red')}">
+              ${isClosed ? '✓ Разблокирована' : (isVerif ? '⚙️ Проверка ОТК' : '🚨 Остановка линии')}
+            </span>
           </div>
 
-          ${isEscalated && !isClosed ? `
-            <div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:6px 10px; border-radius:8px; font-size:11px; font-weight:800; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-              <i class="fa-solid fa-triangle-exclamation"></i> ЭСКАЛИРОВАНО ГЕНЕРАЛЬНОМУ ДИРЕКТОРУ (>30 мин)
-            </div>
-          ` : ''}
+          <div class="andon-line-title">${escapeHtml(ev.line_name)}</div>
+          <div style="font-size:12px; font-weight:700; color:var(--primary-blue); margin-bottom:4px;">${escapeHtml(ev.defect_type)}</div>
+          <div class="andon-desc-text">${escapeHtml(ev.description)}</div>
 
-          ${ev.error_code ? `<span class="andon-error-tag">Код: ${ev.error_code}</span>` : ''}
-          <div class="andon-line-title">${ev.line_name}</div>
-          <div style="font-size:12px; color:#0284c7; font-weight:700; margin-bottom:4px;">${ev.defect_type}</div>
-          <div class="andon-desc-text">${ev.description}</div>
-
-          ${ev.mechanic_notes ? `
-            <div class="andon-resolution-box">
-              <strong style="color:#0369a1;"><i class="fa-solid fa-wrench"></i> Механик (${ev.mechanic_name || 'ОГМ'}):</strong>
-              <div style="margin-top:2px;">${ev.mechanic_notes}</div>
-            </div>
-          ` : ''}
-
-          ${ev.controller_notes ? `
-            <div class="andon-resolution-box" style="background:#ecfdf5; border-color:#a7f3d0;">
-              <strong style="color:#065f46;"><i class="fa-solid fa-circle-check"></i> Контролёр (${ev.controller_name || 'ОТК'}):</strong>
-              <div style="margin-top:2px;">${ev.controller_notes}</div>
-            </div>
-          ` : ''}
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
+            Простой: <strong style="color:${ev.current_downtime_minutes >= 30 ? 'red' : 'inherit'};">${ev.current_downtime_minutes} мин</strong>
+          </div>
 
           <div class="andon-actions-bar">
-            ${!isClosed && ev.status !== 'verification' ? `
-              <button type="button" class="btn-compact-action" style="background:#0284c7; color:#fff;" onclick="openMechanicResolveModal('${ev.id}')">
-                <i class="fa-solid fa-wrench"></i> Отчитаться о ремонте (ОГМ)
+            ${!isClosed && !isVerif ? `
+              <button type="button" class="btn-compact-action" style="background:var(--primary-blue);" onclick="openMechanicResolveModal('${ev.id}')">
+                <i class="fa-solid fa-wrench"></i> Отчитаться о ремонте
               </button>
             ` : ''}
 
-            ${ev.status === 'verification' ? `
-              <button type="button" class="btn-compact-action" style="background:#10b981; color:#fff;" onclick="openControllerUnlockModal('${ev.id}')">
+            ${isVerif ? `
+              <button type="button" class="btn-compact-action" style="background:var(--accent-emerald);" onclick="openControllerUnlockModal('${ev.id}')">
                 <i class="fa-solid fa-lock-open"></i> Проверить и разблокировать (ОТК)
               </button>
             ` : ''}
 
-            ${isClosed ? `
-              <span style="font-size:11px; color:#10b981; font-weight:700;"><i class="fa-solid fa-check-double"></i> Инцидент закрыт</span>
-            ` : ''}
+            ${isClosed ? '<span style="font-size:11px; color:#059669; font-weight:700;">✓ Инцидент закрыт</span>' : ''}
           </div>
         </div>
       `;
     }).join("");
 
-    // Populate OTK Red Box Table as well
-    loadOtkRedBoxTable();
-    loadMechanicRepairs();
   } catch (err) {
     console.error("Error loading Andon feed", err);
   }
@@ -650,9 +1070,9 @@ function openMechanicResolveModal(issueId) {
   if (!ev) return;
   document.getElementById("resolve-issue-id").value = issueId;
   document.getElementById("resolve-issue-summary").innerHTML = `
-    <strong>${ev.ticket_number} - ${ev.line_name}</strong>
-    <div>${ev.defect_type} (${ev.error_code || 'Без кода'})</div>
-    <div style="font-size:12px; color:#64748b; margin-top:4px;">${ev.description}</div>
+    <strong>${ev.ticket_number} - ${escapeHtml(ev.line_name)}</strong>
+    <div>${escapeHtml(ev.defect_type)}</div>
+    <div style="color:#64748b; font-size:12px; margin-top:4px;">${escapeHtml(ev.description)}</div>
   `;
   document.getElementById("modal-mechanic-resolve").classList.remove("hidden");
 }
@@ -660,6 +1080,7 @@ function openMechanicResolveModal(issueId) {
 function setupMechanicResolveHandler() {
   const form = document.getElementById("form-mechanic-resolve");
   if (!form) return;
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const issueId = document.getElementById("resolve-issue-id").value;
@@ -671,15 +1092,15 @@ function setupMechanicResolveHandler() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mechanic_notes, mechanic_name: currentUser ? currentUser.full_name : "Механик ОГМ" })
       });
-      const data = await res.json();
       if (res.ok) {
-        alert("✅ Ремонт зафиксирован. Линия передана Контролёру ОТК для проверки первой детали.");
+        showToast("✅ Ремонт зафиксирован. Линия передана ОТК для проверки первой детали.", "success");
         closeModal("modal-mechanic-resolve");
         form.reset();
         loadAndonFeed();
+        if (currentWorkspace === "master") loadMasterDashboard();
       }
     } catch (err) {
-      alert("Ошибка сохранения отчёта");
+      showToast("Ошибка сохранения", "error");
     }
   });
 }
@@ -690,8 +1111,8 @@ function openControllerUnlockModal(issueId) {
   if (!ev) return;
   document.getElementById("unlock-issue-id").value = issueId;
   document.getElementById("unlock-issue-summary").innerHTML = `
-    <strong>${ev.ticket_number} - ${ev.line_name}</strong>
-    <div style="color:#0369a1; font-weight:700; margin-top:2px;">Отчёт механика: ${ev.mechanic_notes}</div>
+    <strong>${ev.ticket_number} - ${escapeHtml(ev.line_name)}</strong>
+    <div style="color:var(--primary-blue); font-weight:700;">Отчёт механика: ${escapeHtml(ev.mechanic_notes || 'Ремонт завершен')}</div>
   `;
   document.getElementById("modal-controller-unlock").classList.remove("hidden");
 }
@@ -699,6 +1120,7 @@ function openControllerUnlockModal(issueId) {
 function setupControllerUnlockHandler() {
   const form = document.getElementById("form-controller-unlock");
   if (!form) return;
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const issueId = document.getElementById("unlock-issue-id").value;
@@ -710,81 +1132,37 @@ function setupControllerUnlockHandler() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ controller_notes, controller_name: currentUser ? currentUser.full_name : "Контролёр ОТК" })
       });
-      const data = await res.json();
       if (res.ok) {
-        alert("🎉 ЛИНИЯ УСПЕШНО РАЗБЛОКИРОВАНА И ЗАПУЩЕНА!");
+        showToast("🎉 ЛИНИЯ УСПЕШНО РАЗБЛОКИРОВАНА И ЗАПУЩЕНА В РАБОТУ!", "success");
         closeModal("modal-controller-unlock");
         form.reset();
         loadAndonFeed();
-        loadExecutiveBI();
+        if (currentWorkspace === "master") loadMasterDashboard();
+        if (currentWorkspace === "director") loadExecutiveBI();
       }
     } catch (err) {
-      alert("Ошибка разблокировки линии");
+      showToast("Ошибка разблокировки", "error");
     }
   });
 }
 
-function loadOtkRedBoxTable() {
-  const tbody = document.getElementById("otk-redbox-rows");
-  if (!tbody) return;
-  tbody.innerHTML = allAndonEvents.map(ev => `
-    <tr>
-      <td><strong>${ev.ticket_number}</strong></td>
-      <td>${ev.line_name}</td>
-      <td>${ev.defect_type}</td>
-      <td><span class="badge-tag badge-red">${ev.current_downtime_minutes} мин</span></td>
-      <td>${ev.mechanic_notes || '<span style="color:#94a3b8;">в процессе ремонта</span>'}</td>
-      <td>${ev.status === 'closed' ? '<span class="badge-tag badge-green">Разблокирована</span>' : '<span class="badge-tag badge-gold">Заблокирована</span>'}</td>
-      <td>
-        ${ev.status === 'verification' ? `
-          <button class="btn-compact-action" style="background:#10b981; color:#fff;" onclick="openControllerUnlockModal('${ev.id}')">
-            Разблокировать
-          </button>
-        ` : (ev.status === 'closed' ? '<span style="color:#10b981;">✓ Готово</span>' : '<span style="color:#64748b;">Ожидает ОГМ</span>')}
-      </td>
-    </tr>
-  `).join("");
-}
-
-function loadMechanicRepairs() {
-  const tbody = document.getElementById("mechanic-repair-rows");
-  if (!tbody) return;
-  const activeRepairs = allAndonEvents.filter(e => e.status !== "closed");
-  if (!activeRepairs.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:16px; color:#94a3b8;">Все станки и сварочные комплексы исправны. Вызовов нет.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = activeRepairs.map(ev => `
-    <tr>
-      <td><strong>${ev.ticket_number}</strong></td>
-      <td>${ev.line_name}</td>
-      <td><span class="andon-error-tag">${ev.error_code || 'Сбой станка'}</span></td>
-      <td>${ev.description}</td>
-      <td><span class="badge-tag badge-red">${ev.current_downtime_minutes} мин</span></td>
-      <td>${ev.status === 'verification' ? '<span class="badge-tag badge-gold">На проверке ОТК</span>' : '<span class="badge-tag badge-red">Требует ремонта</span>'}</td>
-      <td>
-        ${ev.status !== 'verification' ? `
-          <button class="btn-action-primary" style="font-size:11px; padding:4px 8px;" onclick="openMechanicResolveModal('${ev.id}')">
-            Завершить ремонт
-          </button>
-        ` : '<span style="color:#0284c7;">Передано ОТК</span>'}
-      </td>
-    </tr>
-  `).join("");
-}
-
-// ==================== SHIFT REPORTS MODULE ====================
+// ==================== SHIFT REPORTS LOGIC ====================
 
 function openSubmitShiftReportModal() {
   const todayStr = new Date().toISOString().split("T")[0];
   const srDate = document.getElementById("sr-date");
   if (srDate) srDate.value = todayStr;
+
+  const srDept = document.getElementById("sr-dept");
+  if (srDept && currentMasterDept) srDept.value = currentMasterDept;
+
   document.getElementById("modal-submit-shift-report").classList.remove("hidden");
 }
 
 function setupShiftReportHandler() {
   const form = document.getElementById("form-submit-shift-report");
   if (!form) return;
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
@@ -809,16 +1187,16 @@ function setupShiftReportHandler() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert("✅ Сменный рапорт успешно отправлен и передан на рассмотрение Руководству!");
+        showToast("✅ Сменный рапорт успешно отправлен Директорату завода!", "success");
         closeModal("modal-submit-shift-report");
-        form.reset();
         loadShiftReports();
-        loadExecutiveBI();
+        if (currentWorkspace === "master") loadMasterDashboard();
+        if (currentWorkspace === "director") loadExecutiveBI();
       } else {
-        alert("Ошибка: " + data.detail);
+        showToast(data.detail || "Ошибка отправки рапорта", "error");
       }
     } catch (err) {
-      alert("Ошибка отправки рапорта");
+      showToast("Ошибка отправки рапорта", "error");
     }
   });
 }
@@ -826,717 +1204,165 @@ function setupShiftReportHandler() {
 async function loadShiftReports() {
   const container = document.getElementById("shift-reports-container");
   if (!container) return;
+
   try {
     const res = await fetch("/api/shift-reports");
     const data = await res.json();
     allShiftReports = data.reports || [];
 
     if (!allShiftReports.length) {
-      container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:30px; color:#64748b;">Нет рапортов за текущую дату. Нажмите «Сдать сменный рапорт» выше.</div>';
+      container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:30px; background:#fff; border-radius:12px; color:#64748b;">Нет рапортов. Нажмите «Сдать сменный рапорт» выше.</div>';
       return;
     }
 
     container.innerHTML = allShiftReports.map(sr => {
       const rate = sr.plan_units > 0 ? ((sr.fact_units / sr.plan_units) * 100).toFixed(1) : 0;
-      let statusBadge = '<span class="badge-tag badge-gold">Сдан мастером</span>';
-      if (sr.status === 'reviewed_by_head') statusBadge = '<span class="badge-tag badge-blue">Завизирован начальником</span>';
-      if (sr.status === 'approved_by_director') statusBadge = '<span class="badge-tag badge-green">Утверждён Директором</span>';
+      let statusBadge = '<span class="badge-tag badge-amber">Сдан мастером</span>';
+      if (sr.status === 'reviewed_by_head') statusBadge = '<span class="badge-tag badge-blue">Завизирован</span>';
+      if (sr.status === 'approved_by_director') statusBadge = '<span class="badge-tag badge-green">✓ Утверждён Директором</span>';
 
       return `
         <div class="shift-report-card">
           <div style="display:flex; justify-content:space-between; align-items:flex-start;">
             <div>
-              <span class="badge-tag badge-blue">${sr.shift}</span>
-              <h4 style="font-size:15px; font-weight:800; color:#0f172a; margin-top:4px;">${sr.dept_name}</h4>
-              <div style="font-size:12px; color:#64748b;">Автор: ${sr.author_name}</div>
+              <span class="badge-tag badge-blue">${sr.shift} • ${sr.report_date}</span>
+              <h4 style="font-size:15px; font-weight:800; color:var(--text-main); margin-top:4px;">${escapeHtml(sr.dept_name)}</h4>
+              <div style="font-size:12px; color:var(--text-muted);">Мастер: ${escapeHtml(sr.author_name)}</div>
             </div>
             ${statusBadge}
           </div>
 
           <div class="shift-report-kpis">
-            <div>
-              <div class="report-kpi-val">${sr.plan_units}</div>
-              <div class="report-kpi-lbl">План</div>
-            </div>
-            <div>
-              <div class="report-kpi-val" style="color:#0284c7;">${sr.fact_units}</div>
-              <div class="report-kpi-lbl">Факт (${rate}%)</div>
-            </div>
-            <div>
-              <div class="report-kpi-val" style="color:#ef4444;">${sr.scrap_units}</div>
-              <div class="report-kpi-lbl">Брак</div>
-            </div>
-            <div>
-              <div class="report-kpi-val" style="color:#d97706;">${sr.downtime_minutes}м</div>
-              <div class="report-kpi-lbl">Простой</div>
-            </div>
+            <div><div class="report-kpi-val">${sr.plan_units}</div><div class="report-kpi-lbl">План</div></div>
+            <div><div class="report-kpi-val" style="color:var(--primary-blue);">${sr.fact_units}</div><div class="report-kpi-lbl">Факт (${rate}%)</div></div>
+            <div><div class="report-kpi-val" style="color:var(--accent-danger);">${sr.scrap_units}</div><div class="report-kpi-lbl">Брак</div></div>
+            <div><div class="report-kpi-val" style="color:var(--accent-amber);">${sr.downtime_minutes}м</div><div class="report-kpi-lbl">Простой</div></div>
           </div>
 
-          <div style="font-size:12px; color:#475569; margin-bottom:8px; line-height:1.4;">
-            <strong>Инциденты смены:</strong> ${sr.issues_summary || 'Без существенных отклонений'}
+          <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">
+            <strong>Инциденты:</strong> ${escapeHtml(sr.issues_summary || 'Без существенных отклонений')}
           </div>
 
           ${sr.kaizen_suggestions ? `
-            <div style="font-size:12px; color:#065f46; background:#ecfdf5; padding:6px 10px; border-radius:6px; margin-bottom:10px;">
-              <strong>💡 Kaizen:</strong> ${sr.kaizen_suggestions}
+            <div style="font-size:12px; color:#065f46; background:#ecfdf5; padding:6px 10px; border-radius:6px; margin-bottom:8px;">
+              <strong>💡 Kaizen:</strong> ${escapeHtml(sr.kaizen_suggestions)}
             </div>
           ` : ''}
 
           ${sr.director_verdict ? `
-            <div style="font-size:12px; color:#1e293b; background:#f1f5f9; border-left:3px solid #0284c7; padding:6px 10px; border-radius:4px; margin-bottom:10px;">
-              <strong>👔 Резолюция Директора:</strong> ${sr.director_verdict}
+            <div style="font-size:12px; color:#1e293b; background:#f1f5f9; border-left:3px solid var(--primary-blue); padding:6px 10px; border-radius:4px; margin-bottom:10px;">
+              <strong>👔 Резолюция Директора:</strong> ${escapeHtml(sr.director_verdict)}
             </div>
           ` : ''}
 
-          <div style="display:flex; gap:6px; margin-top:auto; padding-top:8px; border-top:1px solid #f1f5f9;">
+          <div style="display:flex; gap:8px; margin-top:auto; padding-top:10px; border-top:1px solid var(--border-light);">
             ${sr.status === 'submitted' ? `
-              <button class="btn-compact-action" onclick="reviewShiftReportByHead('${sr.id}')">Визировать (Начальник)</button>
+              <button type="button" class="btn-compact-action" style="background:#f1f5f9; color:var(--text-main);" onclick="openHeadReviewModal('${sr.id}')">
+                Визировать (Начальник)
+              </button>
             ` : ''}
+
             ${sr.status !== 'approved_by_director' ? `
-              <button class="btn-compact-action" style="background:#0f172a; color:#fff;" onclick="approveShiftReportByDirector('${sr.id}')">Утвердить (Директор)</button>
-            ` : '<span style="font-size:11px; color:#10b981; font-weight:700;">✓ Утверждено руководством</span>'}
+              <button type="button" class="btn-compact-action" style="background:var(--bg-header);" onclick="openDirectorApproveModal('${sr.id}', '${escapeHtml(sr.dept_name)}', '${escapeHtml(sr.author_name)}')">
+                <i class="fa-solid fa-signature"></i> Утвердить (Директор)
+              </button>
+            ` : '<span style="font-size:11px; color:#059669; font-weight:700;"><i class="fa-solid fa-check-double"></i> Рапорт утвержден</span>'}
           </div>
         </div>
       `;
     }).join("");
+
   } catch (err) {
     console.error("Error loading shift reports", err);
   }
 }
 
-async function reviewShiftReportByHead(reportId) {
-  const comment = prompt("Введите служебную визу / комментарий начальника цеха:", "Смена отработала по нормам, замечаний нет.");
-  if (!comment) return;
-  try {
-    const res = await fetch(`/api/shift-reports/${reportId}/head-review`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ head_comment: comment })
-    });
-    if (res.ok) {
-      alert("Рапорт завизирован");
-      loadShiftReports();
-    }
-  } catch (err) {
-    alert("Ошибка визирования");
-  }
-}
-
-async function approveShiftReportByDirector(reportId) {
-  const verdict = prompt("Введите резолюцию Генерального директора:", "Утверждаю. На следующей смене обеспечить буферный запас деталей.");
-  if (!verdict) return;
-  try {
-    const res = await fetch(`/api/shift-reports/${reportId}/director-approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ director_verdict: verdict })
-    });
-    if (res.ok) {
-      alert("Рапорт официально утверждён Генеральным директором завода!");
-      loadShiftReports();
-      loadExecutiveBI();
-    }
-  } catch (err) {
-    alert("Ошибка утверждения");
-  }
-}
-
-// ==================== EXECUTIVE BI DASHBOARD ====================
-
-async function loadExecutiveBI() {
-  try {
-    const res = await fetch("/api/executive/bi");
-    const data = await res.json();
-
-    // 1. Production Headline
-    const prod = data.total_production_number || {};
-    document.getElementById("bi-total-production").textContent = `${prod.fact || 0} шт.`;
-    document.getElementById("bi-prod-rate").textContent = `${prod.rate || 0}%`;
-    document.getElementById("bi-prod-plan-sub").textContent = `План: ${prod.plan || 0} комплектов сидений и узлов`;
-
-    // 2. Defect Rate
-    const def = data.total_defect_rate || {};
-    document.getElementById("bi-defect-rate").textContent = `${def.percent || 0}%`;
-    document.getElementById("bi-ppm-badge").textContent = `${def.ppm || 0} PPM`;
-    document.getElementById("bi-scrap-units-sub").textContent = `Всего ${def.total_scrap_units || 0} отбракованных узлов изолировано в Red Box`;
-
-    // 3. OEE
-    const oee = data.oee || {};
-    document.getElementById("bi-oee-val").textContent = `${oee.overall_oee || 0}%`;
-    document.getElementById("bi-oee-avail").textContent = `${oee.availability || 0}%`;
-    document.getElementById("bi-oee-perf").textContent = `${oee.performance || 0}%`;
-    document.getElementById("bi-oee-qual").textContent = `${oee.quality || 0}%`;
-
-    // 4. Financial Losses
-    const fin = data.financial_loss || {};
-    const lossUzsMil = (fin.total_loss_uzs / 1000000).toFixed(2);
-    const scrapUzsMil = (fin.scrap_cost_uzs / 1000000).toFixed(2);
-    const downUzsMil = (fin.downtime_cost_uzs / 1000000).toFixed(2);
-    document.getElementById("bi-total-loss").textContent = `${lossUzsMil} млн сум`;
-    document.getElementById("bi-loss-usd").textContent = `$${fin.total_loss_usd} USD`;
-
-    // 5. 30-Minute Escalation Alert Banner
-    const alertBox = document.getElementById("director-escalation-alert-box");
-    const escalated = data.escalated_critical_issues || [];
-    if (escalated.length > 0) {
-      const topEsc = escalated[0];
-      document.getElementById("escalation-banner-title").textContent = `🚨 КРИТИЧЕСКАЯ ЭСКАЛАЦИЯ ДИРЕКТОРУ: Простой линии более ${topEsc.downtime_minutes} минут!`;
-      document.getElementById("escalation-banner-desc").textContent = `Участок: ${topEsc.line_name}. Зависший отдел: ${topEsc.target_service === 'ws-mechanic' ? 'ОГМ / Ремонтники' : 'Служба обеспечения'}. Дефект: ${topEsc.defect_type}.`;
-      document.getElementById("escalation-banner-time").textContent = `Простой: ${topEsc.downtime_minutes} мин`;
-      alertBox.classList.remove("hidden");
-    } else {
-      alertBox.classList.add("hidden");
-    }
-
-    // 6. Bottlenecks Table
-    const tbody = document.getElementById("bi-bottlenecks-rows");
-    if (tbody) {
-      const bottlenecks = data.bottlenecks || [];
-      tbody.innerHTML = bottlenecks.map(b => {
-        const rate = b.plan > 0 ? ((b.fact / b.plan) * 100).toFixed(1) : 100;
-        return `
-          <tr>
-            <td><strong>${b.name_ru}</strong></td>
-            <td>${b.head_name}</td>
-            <td>${b.plan}</td>
-            <td><strong style="color:#0284c7;">${b.fact}</strong></td>
-            <td><span class="badge-tag ${rate >= 95 ? 'badge-green' : 'badge-gold'}">${rate}%</span></td>
-            <td><span class="badge-tag ${b.scrap > 3 ? 'badge-red' : 'badge-green'}">${b.scrap} шт</span></td>
-            <td><span class="badge-tag ${b.downtime > 20 ? 'badge-red' : (b.downtime > 0 ? 'badge-amber' : 'badge-green')}">${b.downtime} мин</span></td>
-            <td>${b.downtime > 20 ? '<span style="color:#ef4444; font-weight:700;">⚠️ Узкое место</span>' : '<span style="color:#10b981;">В норме</span>'}</td>
-          </tr>
-        `;
-      }).join("");
-    }
-
-  } catch (err) {
-    console.error("Error loading executive BI", err);
-  }
-}
-
-// ==================== MASTER WORKSTATION ====================
-
-async function loadMasterDashboard(selectedDept) {
-  const linesRows = document.getElementById("master-lines-progress-rows");
-  if (!linesRows) return;
-
-  const filterEl = document.getElementById("master-dept-filter");
-  let targetDept = selectedDept;
-  if (!targetDept) {
-    if (filterEl && filterEl.value) {
-      targetDept = filterEl.value;
-    } else if (currentUser && currentUser.department_id && currentUser.department_id !== 'all') {
-      targetDept = currentUser.department_id;
-    } else {
-      targetDept = 'ws-assembly';
-    }
-  }
-
-  if (filterEl && filterEl.value !== targetDept) {
-    filterEl.value = targetDept;
-  }
-
-  try {
-    const res = await fetch(`/api/master/dashboard?department_id=${encodeURIComponent(targetDept)}`);
-    if (!res.ok) throw new Error("Failed to load master dashboard");
-    const data = await res.json();
-
-    const sum = data.summary || {};
-    const planEl = document.getElementById("master-plan-val");
-    if (planEl) planEl.textContent = `${sum.total_plan || 0} шт`;
-    const factEl = document.getElementById("master-fact-val");
-    if (factEl) factEl.textContent = `${sum.total_fact || 0} шт`;
-    const scrapEl = document.getElementById("master-scrap-val");
-    if (scrapEl) scrapEl.textContent = `${sum.total_scrap || 0} шт`;
-    const downEl = document.getElementById("master-downtime-val");
-    if (downEl) downEl.textContent = `${sum.total_downtime || 0} мин`;
-
-    const lines = data.lines || [];
-    if (lines.length === 0) {
-      linesRows.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:24px; color:#64748b;">В данном цеху нет зарегистрированных активных линий</td></tr>`;
-      return;
-    }
-
-    linesRows.innerHTML = lines.map(l => {
-      const rate = l.rate != null ? l.rate : (l.plan > 0 ? ((l.fact / l.plan) * 100).toFixed(1) : 0);
-      const isNorm = l.status === "В норме";
-      return `
-        <tr>
-          <td><strong>${escapeHtml(l.line_name)}</strong></td>
-          <td>${escapeHtml(l.description)}</td>
-          <td>${l.plan} шт</td>
-          <td><strong style="color:var(--primary-blue, #0284c7);">${l.fact} шт</strong></td>
-          <td>
-            <div style="display:flex; align-items:center; gap:8px;">
-              <div style="flex:1; background:#e2e8f0; height:8px; border-radius:4px; overflow:hidden;">
-                <div style="width:${Math.min(rate, 100)}%; background:${rate >= 90 ? '#10b981' : rate >= 50 ? '#0284c7' : '#f59e0b'}; height:100%;"></div>
-              </div>
-              <span style="font-size:12px; font-weight:700;">${rate}%</span>
-            </div>
-          </td>
-          <td><span class="badge-tag ${l.scrap > 0 ? 'badge-red' : 'badge-green'}">${l.scrap} шт</span></td>
-          <td><span class="badge-tag ${l.downtime > 0 ? 'badge-amber' : 'badge-green'}">${l.downtime} мин</span></td>
-          <td><span class="badge-tag ${isNorm ? 'badge-green' : 'badge-gold'}">${escapeHtml(l.status)}</span></td>
-        </tr>
-      `;
-    }).join("");
-
-  } catch (err) {
-    console.error("Error loading master dashboard", err);
-  }
-}
-
-// ==================== OTK: INCOMING & RECLAMATIONS ====================
-
-function switchOtkSubTab(tab) {
-  document.getElementById("btn-otk-tab-incoming").classList.remove("active");
-  document.getElementById("btn-otk-tab-inprocess").classList.remove("active");
-  document.getElementById("btn-otk-tab-redbox").classList.remove("active");
-  document.getElementById(`btn-otk-tab-${tab}`).classList.add("active");
-
-  document.getElementById("otk-pane-incoming").classList.add("hidden");
-  document.getElementById("otk-pane-inprocess").classList.add("hidden");
-  document.getElementById("otk-pane-redbox").classList.add("hidden");
-  document.getElementById(`otk-pane-${tab}`).classList.remove("hidden");
-
-  if (tab === "incoming") loadIncomingInspections();
-  if (tab === "redbox") loadOtkRedBoxTable();
-}
-
-function openIncomingModal() {
-  document.getElementById("modal-incoming-inspection").classList.remove("hidden");
-}
-
-function setupIncomingInspectionHandler() {
-  const form = document.getElementById("form-incoming-inspection");
-  if (!form) return;
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const payload = {
-      material_name: document.getElementById("inc-mat-name").value,
-      supplier: document.getElementById("inc-supplier").value,
-      batch_number: document.getElementById("inc-batch").value,
-      sample_size: parseInt(document.getElementById("inc-sample").value) || 100,
-      defect_count: parseInt(document.getElementById("inc-defect").value) || 0,
-      verdict: document.getElementById("inc-verdict").value,
-      inspector_name: document.getElementById("inc-inspector").value || (currentUser ? currentUser.full_name : "Контролёр ОТК"),
-      comments: document.getElementById("inc-comments").value
-    };
-
-    try {
-      const res = await fetch("/api/quality/incoming", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        alert("✅ Акт входного контроля сырья зарегистрирован!");
-        closeModal("modal-incoming-inspection");
-        form.reset();
-        loadIncomingInspections();
-      }
-    } catch (err) {
-      alert("Ошибка сохранения");
-    }
-  });
-}
-
-async function loadIncomingInspections() {
-  const tbody = document.getElementById("incoming-inspection-rows");
-  if (!tbody) return;
-  try {
-    const res = await fetch("/api/quality/incoming");
-    const data = await res.json();
-    const rows = data.incoming || [];
-    tbody.innerHTML = rows.map(r => `
-      <tr>
-        <td>${r.date}</td>
-        <td><strong>${r.material_name}</strong></td>
-        <td>${r.supplier}</td>
-        <td><code>${r.batch_number}</code></td>
-        <td>${r.sample_size} шт</td>
-        <td>${r.defect_count > 0 ? `<span class="badge-tag badge-red">${r.defect_count}</span>` : '0'}</td>
-        <td>${r.certificate_valid ? '✅ В норме' : '❌ Нет'}</td>
-        <td>
-          <span class="badge-tag ${r.verdict === 'accepted' ? 'badge-green' : (r.verdict === 'quarantine' ? 'badge-gold' : 'badge-red')}">
-            ${r.verdict === 'accepted' ? 'Годен' : (r.verdict === 'quarantine' ? 'Карантин' : 'Брак')}
-          </span>
-        </td>
-        <td>${r.inspector_name}</td>
-      </tr>
-    `).join("");
-  } catch (err) {
-    console.error("Error loading incoming inspections", err);
-  }
-}
-
-// Engineer Subtabs
-function switchEngSubTab(tab) {
-  document.getElementById("btn-eng-tab-stats").classList.remove("active");
-  document.getElementById("btn-eng-tab-reclamations").classList.remove("active");
-  document.getElementById("btn-eng-tab-iso").classList.remove("active");
-  document.getElementById("btn-eng-tab-report").classList.remove("active");
-  document.getElementById(`btn-eng-tab-${tab}`).classList.add("active");
-
-  document.getElementById("eng-pane-stats").classList.add("hidden");
-  document.getElementById("eng-pane-reclamations").classList.add("hidden");
-  document.getElementById("eng-pane-iso").classList.add("hidden");
-  document.getElementById("eng-pane-report").classList.add("hidden");
-  document.getElementById(`eng-pane-${tab}`).classList.remove("hidden");
-
-  if (tab === "stats") renderQualityCharts();
-  if (tab === "reclamations") loadReclamations();
-  if (tab === "iso") loadAudits();
-  if (tab === "report") loadDailyQualityTasks();
-}
-
-function openNewReclamationModal() {
-  document.getElementById("modal-reclamation").classList.remove("hidden");
-}
-
-function setupReclamationHandler() {
-  const form = document.getElementById("form-reclamation");
-  if (!form) return;
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const payload = {
-      customer: document.getElementById("rec-customer").value,
-      car_model: document.getElementById("rec-carmodel").value,
-      part_number: document.getElementById("rec-partno").value,
-      defect_description: document.getElementById("rec-desc").value,
-      severity: document.getElementById("rec-severity").value,
-      root_cause_analysis: document.getElementById("rec-rootcause").value,
-      corrective_action: document.getElementById("rec-corrective").value,
-      engineer_name: currentUser ? currentUser.full_name : "Инженер по качеству"
-    };
-
-    try {
-      const res = await fetch("/api/quality/reclamations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (res.ok) {
-        alert("✅ Рекламация " + data.ticket_num + " внесена в систему 8D!");
-        closeModal("modal-reclamation");
-        form.reset();
-        loadReclamations();
-      }
-    } catch (err) {
-      alert("Ошибка сохранения рекламации");
-    }
-  });
-}
-
-async function loadReclamations() {
-  const tbody = document.getElementById("reclamations-rows");
-  if (!tbody) return;
-  try {
-    const res = await fetch("/api/quality/reclamations");
-    const data = await res.json();
-    const rows = data.reclamations || [];
-    tbody.innerHTML = rows.map(r => `
-      <tr>
-        <td><strong>${r.ticket_num}</strong></td>
-        <td>${r.date}</td>
-        <td>${r.customer}</td>
-        <td><span class="badge-tag badge-blue">${r.car_model}</span></td>
-        <td><code>${r.part_number}</code></td>
-        <td>${r.defect_description}</td>
-        <td>${r.root_cause_analysis || '--'}</td>
-        <td>${r.corrective_action || '--'}</td>
-        <td>
-          <span class="badge-tag ${r.status === 'closed' ? 'badge-green' : 'badge-gold'}">
-            ${r.status === 'closed' ? 'Закрыта' : 'В расследовании 8D'}
-          </span>
-        </td>
-      </tr>
-    `).join("");
-  } catch (err) {
-    console.error("Error loading reclamations", err);
-  }
-}
-
-function renderQualityCharts() {
-  const ctxDef = document.getElementById("chartDefectTypes");
-  if (ctxDef) {
-    if (chartDefectsInstance) chartDefectsInstance.destroy();
-    chartDefectsInstance = new Chart(ctxDef, {
-      type: "doughnut",
-      data: {
-        labels: ["Момент затяжки болтов", "Сварные швы / поры", "Симметрия строчки чехлов", "Плотность пены ППУ", "Царапины пластика"],
-        datasets: [{
-          data: [35, 25, 20, 12, 8],
-          backgroundColor: ["#0284c7", "#ef4444", "#f59e0b", "#10b981", "#8b5cf6"]
-        }]
-      },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-  }
-
-  const ctxScrap = document.getElementById("chartScrapByDept");
-  if (ctxScrap) {
-    if (chartScrapDeptInstance) chartScrapDeptInstance.destroy();
-    chartScrapDeptInstance = new Chart(ctxScrap, {
-      type: "bar",
-      data: {
-        labels: ["Сборка", "Сварка", "Штамповка", "ППУ", "Пошив"],
-        datasets: [{
-          label: "Процент брака (%)",
-          data: [0.62, 0.45, 0.42, 0.38, 0.55],
-          backgroundColor: "#0284c7"
-        }]
-      },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-  }
-}
-
-// ==================== ENERGY (ОГЭ) & FACILITY (АХО) ====================
-
-async function loadEnergyStatus() {
-  try {
-    const res = await fetch("/api/energy/status");
-    const data = await res.json();
-    const en = data.energy || {};
-    document.getElementById("oge-elec-val").textContent = `${en.electricity_kwh || 3420} кВт·ч`;
-    document.getElementById("oge-gas-val").textContent = `${en.gas_m3 || 185} м³`;
-    document.getElementById("oge-water-val").textContent = `${en.water_m3 || 42} м³`;
-    document.getElementById("oge-air-val").textContent = `${en.air_pressure_bar || 6.9} бар`;
-  } catch (err) {
-    console.error("Error loading energy status", err);
-  }
-}
-
-function setupEnergyHandlers() {
-  const formRec = document.getElementById("form-energy-record");
-  if (formRec) {
-    formRec.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const payload = {
-        electricity_kwh: parseFloat(document.getElementById("inp-oge-elec").value) || 0,
-        gas_m3: parseFloat(document.getElementById("inp-oge-gas").value) || 0,
-        water_m3: parseFloat(document.getElementById("inp-oge-water").value) || 0,
-        air_pressure_bar: parseFloat(document.getElementById("inp-oge-air").value) || 6.8
-      };
-      const res = await fetch("/api/energy/record", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        alert("✅ Показания счетчиков сохранены в системе!");
-        loadEnergyStatus();
-      }
-    });
-  }
-
-  const formAlert = document.getElementById("form-energy-alert");
-  if (formAlert) {
-    formAlert.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const text = document.getElementById("alert-oge-desc").value;
-      const res = await fetch("/api/energy/alert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emergency_text: text })
-      });
-      if (res.ok) {
-        alert("🚨 АВАРИЙНЫЙ СИГНАЛ ОГЭ РАЗОСЛАН ПО ВСЕМУ ЗАВОДУ!");
-        closeModal("modal-energy-alert");
-        loadAndonFeed();
-      }
-    });
-  }
-}
-
-function openEnergyAlertModal() {
-  document.getElementById("modal-energy-alert").classList.remove("hidden");
-}
-
-function openFacilityChecklistModal() {
-  document.getElementById("modal-facility-chk").classList.remove("hidden");
-}
-
-function setupFacilityHandler() {
-  const form = document.getElementById("form-facility-chk");
-  if (!form) return;
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const payload = {
-      cleanliness_ok: document.getElementById("fac-clean").checked ? 1 : 0,
-      canteen_ok: document.getElementById("fac-canteen").checked ? 1 : 0,
-      security_ok: document.getElementById("fac-security").checked ? 1 : 0,
-      waste_disposal_ok: document.getElementById("fac-waste").checked ? 1 : 0,
-      open_requests: parseInt(document.getElementById("fac-open-req").value) || 0,
-      closed_requests: parseInt(document.getElementById("fac-closed-req").value) || 0,
-      report_text: document.getElementById("fac-notes").value
-    };
-
-    const res = await fetch("/api/facility/checklists", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) {
-      alert("✅ Чек-лист АХО успешно сохранен!");
-      closeModal("modal-facility-chk");
-      loadFacilityChecklists();
-    }
-  });
-}
-
-async function loadFacilityChecklists() {
-  const tbody = document.getElementById("facility-checklists-rows");
-  if (!tbody) return;
-  try {
-    const res = await fetch("/api/facility/checklists");
-    const data = await res.json();
-    const rows = data.checklists || [];
-    tbody.innerHTML = rows.map(r => `
-      <tr>
-        <td>${r.date}</td>
-        <td><strong>${r.inspector_name}</strong></td>
-        <td>${r.cleanliness_ok ? '✅ 100%' : '❌ Замечания'}</td>
-        <td>${r.canteen_ok ? '✅ Норма' : '❌ Нарушение'}</td>
-        <td>${r.security_ok ? '✅ Без сбоев' : '❌ Инцидент'}</td>
-        <td>${r.waste_disposal_ok ? '✅ Вывезено' : '❌ Накопление'}</td>
-        <td><span class="badge-tag badge-green">${r.closed_requests} решено</span> / ${r.open_requests} открыто</td>
-        <td>${r.report_text}</td>
-      </tr>
-    `).join("");
-  } catch (err) {
-    console.error("Error loading facility checklists", err);
-  }
-}
-
-// ==================== QUALITY DAILY TASKS & BIQS AUDITS ====================
-
-function openCreateQualityTaskModal() {
-  const todayStr = new Date().toISOString().split("T")[0];
-  document.getElementById("new-quality-date").value = todayStr;
-  document.getElementById("modal-create-quality-task").classList.remove("hidden");
-}
-
-function setupQualityDailyTaskHandlers() {
-  const form = document.getElementById("form-create-quality-task");
-  if (!form) return;
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const payload = {
-      plan_date: document.getElementById("new-quality-date").value,
-      target_role: document.getElementById("new-task-target-role").value,
-      priority: document.getElementById("new-quality-priority").value,
-      department_id: document.getElementById("new-quality-dept").value,
-      line_name: document.getElementById("new-quality-line").value,
-      title: document.getElementById("new-quality-title").value,
-      description: document.getElementById("new-quality-desc").value
-    };
-
-    const res = await fetch("/api/quality/daily-tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) {
-      alert("✅ Задание качества успешно зарегистрировано в плане смены!");
-      closeModal("modal-create-quality-task");
-      loadDailyQualityTasks();
-    }
-  });
-}
-
-async function loadDailyQualityTasks() {
-  const dateInp = document.getElementById("quality-plan-date-input");
-  const reqDate = dateInp && dateInp.value ? dateInp.value : new Date().toISOString().split("T")[0];
-  if (dateInp && !dateInp.value) dateInp.value = reqDate;
-
-  try {
-    const res = await fetch(`/api/quality/daily-tasks?date=${reqDate}`);
-    const data = await res.json();
-    const engContainer = document.getElementById("engineers-tasks-container");
-    const ctrlContainer = document.getElementById("controllers-tasks-container");
-
-    if (engContainer) {
-      const engTasks = data.engineer_tasks || [];
-      engContainer.innerHTML = engTasks.map(t => renderTaskCard(t, "engineer")).join("") || '<p style="color:#64748b;">Нет инженерных заданий на выбранную дату</p>';
-    }
-
-    if (ctrlContainer) {
-      const ctrlTasks = data.controller_tasks || [];
-      ctrlContainer.innerHTML = ctrlTasks.map(t => renderTaskCard(t, "controller")).join("") || '<p style="color:#64748b;">Нет заданий контролёров на выбранную дату</p>';
-    }
-
-    // Evening report
-    const repBox = document.getElementById("evening-report-content");
-    const engRepBox = document.getElementById("eng-evening-report-box");
-    const rep = data.daily_report;
-    const reportHtml = rep ? `
-      <div style="padding:16px;">
-        <h3 style="font-size:16px; font-weight:800; color:#0f172a; margin-bottom:8px;">Итоговый суточный рапорт службы качества за ${reqDate}</h3>
-        <p style="font-size:13px; color:#475569; line-height:1.5;">${rep.summary_conclusion || 'Все сборочные посты отработали смену под контролем ОТК.'}</p>
-        ${rep.director_verdict ? `
-          <div style="margin-top:14px; background:#f1f5f9; border-left:4px solid #10b981; padding:10px 14px; border-radius:6px;">
-            <strong>Резолюция Генерального директора:</strong> ${rep.director_verdict}
-          </div>
-        ` : ''}
-      </div>
-    ` : '<p style="color:#64748b; padding:16px;">Суточный рапорт формируется в конце вечерней смены.</p>';
-
-    if (repBox) repBox.innerHTML = reportHtml;
-    if (engRepBox) engRepBox.innerHTML = reportHtml;
-
-  } catch (err) {
-    console.error("Error loading daily quality tasks", err);
-  }
-}
-
-function renderTaskCard(t, roleType) {
-  return `
-    <div class="quality-task-card ${roleType === 'engineer' ? 'card-engineer' : 'card-controller'}">
-      <div class="task-card-header">
-        <span class="task-card-tag badge-${t.priority}">${t.priority === 'critical' ? '🚨 Критический' : '⚡ Высокий'}</span>
-        <span class="badge-tag ${t.status === 'completed' ? 'badge-green' : 'badge-gold'}">
-          ${t.status === 'completed' ? 'Выполнено' : 'В работе'}
-        </span>
-      </div>
-      <div class="task-card-title">${t.title}</div>
-      <div class="task-card-meta"><i class="fa-solid fa-industry"></i> ${t.line_name}</div>
-      <div class="task-card-desc">${t.description}</div>
-      <div class="task-actions-row">
-        <span style="font-size:11px; color:#64748b;">Проверено: <strong>${t.units_checked || 0} шт</strong></span>
-        ${t.defects_prevented > 0 ? `<span style="font-size:11px; color:#10b981; font-weight:700;">Предотвращено брака: ${t.defects_prevented}</span>` : ''}
-      </div>
-    </div>
+// Director Approval Modal
+function openDirectorApproveModal(reportId, deptName, authorName) {
+  document.getElementById("approve-report-id").value = reportId;
+  document.getElementById("approve-report-summary").innerHTML = `
+    <strong>Цех:</strong> ${deptName || 'Сборочный цех'} | <strong>Мастер:</strong> ${authorName || 'Карим Азизов'}
   `;
+  document.getElementById("modal-director-approve").classList.remove("hidden");
 }
 
-function switchQualityTab(tab) {
-  document.getElementById("tab-btn-engineers").classList.remove("active");
-  document.getElementById("tab-btn-controllers").classList.remove("active");
-  document.getElementById("tab-btn-report").classList.remove("active");
-  document.getElementById(`tab-btn-${tab}`).classList.add("active");
-
-  document.getElementById("quality-subtab-engineers").classList.add("hidden");
-  document.getElementById("quality-subtab-controllers").classList.add("hidden");
-  document.getElementById("quality-subtab-report").classList.add("hidden");
-  document.getElementById(`quality-subtab-${tab}`).classList.remove("hidden");
+function onDirectorVerdictTemplateChange(val) {
+  document.getElementById("director-verdict-text").value = val;
 }
 
-// BIQS Audits Walkthrough
+function setupDirectorApproveHandler() {
+  const form = document.getElementById("form-director-approve");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const reportId = document.getElementById("approve-report-id").value;
+    const verdict = document.getElementById("director-verdict-text").value.trim();
+
+    try {
+      const res = await fetch(`/api/shift-reports/${reportId}/director-approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ director_verdict: verdict })
+      });
+      if (res.ok) {
+        showToast("✅ Рапорт официально утверждён Генеральным директором!", "success");
+        closeModal("modal-director-approve");
+        loadShiftReports();
+        if (currentWorkspace === "director") loadExecutiveBI();
+      }
+    } catch (err) {
+      showToast("Ошибка утверждения рапорта", "error");
+    }
+  });
+}
+
+// Head Review Modal
+function openHeadReviewModal(reportId) {
+  document.getElementById("head-review-report-id").value = reportId;
+  document.getElementById("modal-head-review").classList.remove("hidden");
+}
+
+function setupHeadReviewHandler() {
+  const form = document.getElementById("form-head-review");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const reportId = document.getElementById("head-review-report-id").value;
+    const comment = document.getElementById("head-review-comment").value.trim();
+
+    try {
+      const res = await fetch(`/api/shift-reports/${reportId}/head-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ head_comment: comment })
+      });
+      if (res.ok) {
+        showToast("Рапорт завизирован руководителем цеха", "success");
+        closeModal("modal-head-review");
+        loadShiftReports();
+      }
+    } catch (err) {
+      showToast("Ошибка визирования", "error");
+    }
+  });
+}
+
+// ==================== BIQS AUDITS LOGIC ====================
+
 function openNewAuditModal() {
   const container = document.getElementById("audit-questions-container");
   if (container) {
     container.innerHTML = BIQS_STANDARD_QUESTIONS.map((q, idx) => `
-      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin-bottom:8px;">
-        <div style="font-size:11px; font-weight:800; color:#0284c7; text-transform:uppercase;">${q.section}</div>
-        <div style="font-size:13px; font-weight:600; color:#0f172a; margin:4px 0 8px 0;">${q.question_ru}</div>
+      <div style="background:#f8fafc; border:1px solid var(--border-light); border-radius:8px; padding:10px 12px; margin-bottom:8px;">
+        <div style="font-size:11px; font-weight:800; color:var(--primary-blue); text-transform:uppercase;">${q.section}</div>
+        <div style="font-size:13px; font-weight:600; color:var(--text-main); margin:4px 0 8px 0;">${q.question}</div>
         <div style="display:flex; gap:16px;">
-          <label style="font-size:12px; font-weight:700; color:#10b981; cursor:pointer;">
+          <label style="font-size:12px; font-weight:700; color:var(--accent-emerald); cursor:pointer;">
             <input type="radio" name="audit-q-${idx}" value="yes" checked> Да (Соблюдается)
           </label>
-          <label style="font-size:12px; font-weight:700; color:#ef4444; cursor:pointer;">
+          <label style="font-size:12px; font-weight:700; color:var(--accent-danger); cursor:pointer;">
             <input type="radio" name="audit-q-${idx}" value="no"> Нет (Отклонение)
           </label>
         </div>
@@ -1549,6 +1375,7 @@ function openNewAuditModal() {
 function setupBiqsAuditHandler() {
   const form = document.getElementById("form-create-audit");
   if (!form) return;
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
@@ -1558,46 +1385,54 @@ function setupBiqsAuditHandler() {
       worker_name: document.getElementById("audit-worker-name").value,
       worker_knowledge_status: "Знает и соблюдает стандарт SOS",
       compliance_score: 96.5,
-      questions: BIQS_STANDARD_QUESTIONS.map(q => ({ section: q.section, question: q.question_ru, result: "pass" })),
+      questions: BIQS_STANDARD_QUESTIONS.map(q => ({ section: q.section, question: q.question, result: "pass" })),
       comments: "Обход завершен. Стандарты GM BIQS соблюдаются."
     };
 
-    const res = await fetch("/api/audits/biqs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) {
-      alert("✅ Аудит BIQS успешно зафиксирован в единой базе завода!");
-      closeModal("modal-biqs-audit");
-      loadAudits();
+    try {
+      const res = await fetch("/api/audits/biqs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        showToast("✅ Аудит BIQS успешно зафиксирован в единой базе завода!", "success");
+        closeModal("modal-biqs-audit");
+        loadAudits();
+      }
+    } catch (err) {
+      showToast("Ошибка сохранения аудита", "error");
     }
   });
 }
 
 async function loadAudits() {
   const container = document.getElementById("audits-list-container");
-  const engAudits = document.getElementById("eng-audits-list");
+  if (!container) return;
+
   try {
     const res = await fetch("/api/audits/biqs");
     const data = await res.json();
     const rows = data.audits || [];
 
-    const html = rows.map(a => `
-      <div class="card" style="border-left:4px solid #10b981; margin-bottom:12px;">
+    if (!rows.length) {
+      container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:30px; background:#fff; border-radius:12px; color:#64748b;">Аудитов пока нет. Нажмите «Провести аудит BIQS».</div>';
+      return;
+    }
+
+    container.innerHTML = rows.map(a => `
+      <div class="card" style="border-left:5px solid var(--accent-emerald);">
         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
           <div>
-            <h4 style="font-size:14px; font-weight:800; color:#0f172a;">${a.line_name}</h4>
-            <div style="font-size:12px; color:#64748b;">Аудитор: ${a.auditor_name} | Оператор: ${a.worker_name}</div>
+            <h4 style="font-size:15px; font-weight:800; color:var(--text-main);">${escapeHtml(a.line_name)}</h4>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Аудитор: ${escapeHtml(a.auditor_name)} | Оператор: ${escapeHtml(a.worker_name)}</div>
           </div>
-          <span class="badge-tag badge-green" style="font-size:13px; font-weight:800;">${a.compliance_score}% BIQS</span>
+          <span class="badge-tag badge-green" style="font-size:14px; font-weight:900;">${a.compliance_score}% BIQS</span>
         </div>
-        <p style="font-size:12px; color:#475569; margin-top:8px;">${a.comments || 'Замечаний не выявлено'}</p>
+        <p style="font-size:13px; color:var(--text-secondary); margin-top:10px;">${escapeHtml(a.comments || 'Замечаний не выявлено. Стандарты выполняются.')}</p>
       </div>
-    `).join("") || '<p style="color:#64748b;">Аудитов пока нет</p>';
+    `).join("");
 
-    if (container) container.innerHTML = html;
-    if (engAudits) engAudits.innerHTML = html;
   } catch (err) {
     console.error("Error loading audits", err);
   }
@@ -1605,40 +1440,24 @@ async function loadAudits() {
 
 // ==================== ADMIN PANEL LOGIC ====================
 
-function switchAdminSubTab(tab) {
-  document.getElementById("admin-tab-btn-keys").classList.remove("active");
-  document.getElementById("admin-tab-btn-lines").classList.remove("active");
-  document.getElementById("admin-tab-btn-users").classList.remove("active");
-  document.getElementById("admin-tab-btn-logs").classList.remove("active");
-  document.getElementById(`admin-tab-btn-${tab}`).classList.add("active");
-
-  document.getElementById("admin-subtab-keys").classList.add("hidden");
-  document.getElementById("admin-subtab-lines").classList.add("hidden");
-  document.getElementById("admin-subtab-users").classList.add("hidden");
-  document.getElementById("admin-subtab-logs").classList.add("hidden");
-  document.getElementById(`admin-subtab-${tab}`).classList.remove("hidden");
-
-  if (tab === "keys") loadAdminKeys();
-  if (tab === "lines") loadAdminLines();
-  if (tab === "users") loadAdminUsers();
-  if (tab === "logs") loadAdminLogs();
-}
-
 function openCreateKeyModal() {
   document.getElementById("modal-create-key").classList.remove("hidden");
 }
 
 function setupAdminHandlers() {
   const formKey = document.getElementById("form-create-key");
-  if (formKey) {
-    formKey.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const payload = {
-        role: document.getElementById("key-role-select").value,
-        department_id: document.getElementById("key-dept-select").value,
-        max_uses: 25,
-        note: document.getElementById("key-note").value
-      };
+  if (!formKey) return;
+
+  formKey.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      role: document.getElementById("key-role-select").value,
+      department_id: document.getElementById("key-dept-select").value,
+      max_uses: 25,
+      note: document.getElementById("key-note").value
+    };
+
+    try {
       const res = await fetch("/api/admin/invite-keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1646,96 +1465,134 @@ function setupAdminHandlers() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert("✅ Инвайт-код сгенерирован: " + data.key_code);
+        showToast(`✅ Инвайт-код сгенерирован: ${data.key_code}`, "success");
         closeModal("modal-create-key");
         loadAdminKeys();
       }
-    });
-  }
+    } catch (err) {
+      showToast("Ошибка генерации инвайт-кода", "error");
+    }
+  });
 }
 
 async function loadAdminKeys() {
   const tbody = document.getElementById("invite-keys-rows");
   if (!tbody) return;
+
   try {
     const res = await fetch("/api/admin/invite-keys");
     const data = await res.json();
     const keys = data.keys || [];
+
     tbody.innerHTML = keys.map(k => `
       <tr>
-        <td><code>${k.key_code}</code></td>
+        <td><code>${escapeHtml(k.key_code)}</code></td>
         <td>${getRoleDisplayName(k.role)}</td>
-        <td>${k.dept_name_ru || k.department_id}</td>
+        <td>${escapeHtml(k.dept_name_ru || k.department_id)}</td>
         <td>${k.used_count} / ${k.max_uses}</td>
         <td><span class="badge-tag ${k.is_active ? 'badge-green' : 'badge-red'}">${k.is_active ? 'Активен' : 'Отключен'}</span></td>
-        <td>${k.note || '--'}</td>
+        <td>${escapeHtml(k.note || '—')}</td>
         <td>
-          <button class="btn-compact-tool" onclick="toggleKey('${k.id}')">${k.is_active ? 'Отключить' : 'Включить'}</button>
+          <button type="button" class="btn-compact-tool" onclick="toggleKey('${k.id}')">${k.is_active ? 'Отключить' : 'Включить'}</button>
         </td>
       </tr>
     `).join("");
+
+    loadAdminLogs();
+
   } catch (err) {
     console.error("Error loading admin keys", err);
   }
 }
 
 async function toggleKey(keyId) {
-  await fetch(`/api/admin/invite-keys/${keyId}/toggle`, { method: "POST" });
-  loadAdminKeys();
-}
-
-async function loadAdminLines() {
-  const tbody = document.getElementById("admin-lines-rows");
-  if (!tbody) return;
-  tbody.innerHTML = allAssemblyLines.map(l => `
-    <tr>
-      <td>${l.dept_code || l.department_id}</td>
-      <td><strong>${l.name}</strong></td>
-      <td>${l.description || '--'}</td>
-      <td><span class="badge-tag badge-green">Активна</span></td>
-    </tr>
-  `).join("");
-}
-
-async function loadAdminUsers() {
-  const tbody = document.getElementById("admin-users-rows");
-  if (!tbody) return;
   try {
-    const res = await fetch("/api/admin/users");
-    const data = await res.json();
-    const users = data.users || [];
-    tbody.innerHTML = users.map(u => `
-      <tr>
-        <td><code>${u.username}</code></td>
-        <td>${u.full_name}</td>
-        <td>${getRoleDisplayName(u.role)}</td>
-        <td>${u.dept_name_ru || u.department_id}</td>
-        <td><span class="badge-tag ${u.is_active ? 'badge-green' : 'badge-red'}">${u.is_active ? 'Активен' : 'Блок'}</span></td>
-      </tr>
-    `).join("");
-  } catch (err) {
-    console.error("Error loading admin users", err);
-  }
+    await fetch(`/api/admin/invite-keys/${keyId}/toggle`, { method: "POST" });
+    showToast("Статус ключа изменён", "info");
+    loadAdminKeys();
+  } catch (e) {}
 }
 
 async function loadAdminLogs() {
   const tbody = document.getElementById("admin-logs-rows");
   if (!tbody) return;
+
   try {
     const res = await fetch("/api/admin/logs");
     const data = await res.json();
     const logs = data.logs || [];
+
     tbody.innerHTML = logs.map(l => `
       <tr>
         <td style="font-size:11px;">${l.created_at ? l.created_at.slice(0, 16) : ''}</td>
-        <td>${l.username}</td>
-        <td><strong>${l.action}</strong></td>
-        <td style="font-size:12px;">${l.detail}</td>
+        <td>${escapeHtml(l.username)}</td>
+        <td><strong>${escapeHtml(l.action)}</strong></td>
+        <td style="font-size:12px;">${escapeHtml(l.detail)}</td>
       </tr>
     `).join("");
+
   } catch (err) {
     console.error("Error loading admin logs", err);
   }
+}
+
+// ==================== DEPARTMENTS & SELECTS POPULATION ====================
+
+async function loadDepartments() {
+  try {
+    const res = await fetch("/api/departments");
+    const data = await res.json();
+    allDepartments = data.departments || [];
+  } catch (err) {
+    console.error("Error loading departments", err);
+  }
+}
+
+async function loadAssemblyLines() {
+  try {
+    const res = await fetch("/api/lines");
+    const data = await res.json();
+    allAssemblyLines = data.lines || [];
+  } catch (err) {
+    console.error("Error loading lines", err);
+  }
+}
+
+function populateGlobalSelects() {
+  const optionsHtml = allDepartments.map(d => `<option value="${d.id}">${d.code}: ${d.name_ru}</option>`).join("");
+
+  const wsiDept = document.getElementById("wsi-dept");
+  if (wsiDept) { wsiDept.innerHTML = optionsHtml; onWorkerDeptChange(); }
+
+  const andonDept = document.getElementById("andon-target-dept");
+  if (andonDept) { andonDept.innerHTML = optionsHtml; onAndonDeptChange(); }
+
+  const srDept = document.getElementById("sr-dept");
+  if (srDept) { srDept.innerHTML = optionsHtml; }
+
+  const auditDept = document.getElementById("audit-dept-select");
+  if (auditDept) { auditDept.innerHTML = optionsHtml; }
+
+  const keyDept = document.getElementById("key-dept-select");
+  if (keyDept) { keyDept.innerHTML = '<option value="all">Все цеха</option>' + optionsHtml; }
+}
+
+function onWorkerDeptChange() {
+  const deptEl = document.getElementById("wsi-dept");
+  if (!deptEl) return;
+  const deptId = deptEl.value;
+  const lineSelect = document.getElementById("wsi-line");
+  const filtered = allAssemblyLines.filter(l => l.department_id === deptId);
+  lineSelect.innerHTML = filtered.length ? filtered.map(l => `<option value="${l.name}">${l.name}</option>`).join("") : '<option value="Общий пост цеха">Общий пост цеха</option>';
+}
+
+function onAndonDeptChange() {
+  const deptEl = document.getElementById("andon-target-dept");
+  if (!deptEl) return;
+  const deptId = deptEl.value;
+  const lineSelect = document.getElementById("andon-line-name");
+  const filtered = allAssemblyLines.filter(l => l.department_id === deptId);
+  lineSelect.innerHTML = filtered.length ? filtered.map(l => `<option value="${l.name}">${l.name}</option>`).join("") : '<option value="Главная линия">Главная линия</option>';
 }
 
 // ==================== MODAL HELPERS ====================
@@ -1750,3 +1607,20 @@ window.onclick = function(event) {
     event.target.classList.add("hidden");
   }
 };
+
+window.onkeydown = function(event) {
+  if (event.key === "Escape") {
+    document.querySelectorAll(".modal-overlay").forEach(m => m.classList.add("hidden"));
+  }
+};
+
+// Language Toggle
+function setAppLanguage(lang) {
+  document.querySelectorAll(".lang-btn").forEach(b => {
+    b.classList.toggle("active", b.getAttribute("data-lang") === lang);
+  });
+  if (typeof setLanguage === "function") {
+    try { setLanguage(lang); } catch (e) {}
+  }
+  showToast(lang === "uz" ? "Til oʻzgartirildi: Oʻzbekcha" : "Язык интерфейса: Русский", "info");
+}
