@@ -1195,11 +1195,112 @@ def submit_worker_input(req: WorkerShiftInputRequest, request: Request):
         req.article.strip(), req.units_made, req.defects_count, req.defect_reason or '', req.breakdown_notes or ''
     ))
 
+    # GM BIQS Standard: If ANY defect occurred on ANY line, automatically broadcast it to the whole factory!
+    if req.defects_count > 0:
+        cursor.execute("SELECT COUNT(*) FROM line_issues;")
+        cnt = cursor.fetchone()[0] + 1
+        ticket_num = f"DEF-2026-{cnt:03d}"
+        issue_id = f"iss-{uuid.uuid4().hex[:8]}"
+        defect_msg = f"Брак детали '{req.article.strip()}': {req.defect_reason or 'Дефект изготовления'} ({req.defects_count} шт)"
+        cursor.execute("""
+            INSERT INTO line_issues (
+                id, ticket_number, department_id, line_name, defect_type, error_code,
+                target_service, severity, description, status, downtime_minutes,
+                created_by_user, reporter_name, created_at
+            ) VALUES (?, ?, ?, ?, ?, 'DEF-AUTO', 'ws-quality', ?, ?, 'open', 0, ?, ?, CURRENT_TIMESTAMP);
+        """, (
+            issue_id, ticket_num, req.department_id, req.line_name, defect_msg,
+            'critical_stop' if req.defects_count >= 3 else 'warning',
+            f"Зафиксирован брак на линии {req.line_name} оператором {worker_name}. Причина: {req.defect_reason or 'Не указана'}. Примечание: {req.breakdown_notes or 'Нет'}",
+            worker_name, worker_name
+        ))
+
     conn.commit()
     conn.close()
 
     log_action(user_id, worker_name, 'Ввод данных выработки рабочим', f"{req.line_name}: сделано {req.units_made}, брак {req.defects_count}")
     return {'status': 'success', 'input_id': input_id, 'message': 'Данные смены зафиксированы в цифровом журнале'}
+
+@app.get('/api/factory/live-alerts')
+def get_factory_live_alerts():
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT i.*, d.name_ru as dept_name_ru, d.code as dept_code
+        FROM line_issues i
+        LEFT JOIN departments d ON i.department_id = d.id
+        WHERE i.status != 'closed'
+        ORDER BY i.created_at DESC
+        LIMIT 10;
+    """)
+    active_issues = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute("""
+        SELECT w.*, d.name_ru as dept_name_ru
+        FROM worker_shift_inputs w
+        LEFT JOIN departments d ON w.department_id = d.id
+        WHERE w.defects_count > 0
+        ORDER BY w.created_at DESC
+        LIMIT 10;
+    """)
+    recent_defects = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    total_active = len(active_issues)
+    latest = None
+    if active_issues:
+        top = active_issues[0]
+        latest = {
+            'id': top['id'],
+            'type': 'line_issue',
+            'line': top.get('line_name', 'Линия завода'),
+            'dept': top.get('dept_name_ru') or top.get('department_id', 'Производство'),
+            'title': top.get('defect_type', 'Остановка или брак'),
+            'description': top.get('description', ''),
+            'severity': top.get('severity', 'warning'),
+            'downtime_minutes': top.get('downtime_minutes', 0),
+            'reported_by': top.get('reporter_name') or top.get('created_by_user') or 'Оператор',
+            'created_at': top.get('created_at', '')
+        }
+    elif recent_defects:
+        top_d = recent_defects[0]
+        latest = {
+            'id': top_d['id'],
+            'type': 'worker_defect',
+            'line': top_d.get('line_name', 'Линия завода'),
+            'dept': top_d.get('dept_name_ru') or top_d.get('department_id', 'Цех'),
+            'title': f"Брак детали '{top_d['article']}' ({top_d['defects_count']} шт): {top_d.get('defect_reason') or 'Обнаружен дефект'}",
+            'description': top_d.get('breakdown_notes') or '',
+            'severity': 'warning',
+            'downtime_minutes': 0,
+            'reported_by': top_d.get('worker_name', 'Оператор'),
+            'created_at': top_d.get('created_at', '')
+        }
+
+    return {
+        'status': 'success',
+        'total_active': total_active,
+        'has_active': total_active > 0,
+        'latest': latest,
+        'active_issues': active_issues,
+        'recent_defects': recent_defects
+    }
+
+@app.post('/api/factory/resolve-alert/{issue_id}')
+def resolve_factory_alert(issue_id: str, request: Request):
+    user = get_current_user_from_req(request)
+    resolver_name = user.get('full_name') if user else 'Мастер/Контролёр'
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE line_issues 
+        SET status='closed', action_taken=?, mechanic_notes=?
+        WHERE id=?;
+    """, (f"Инцидент устранён: {resolver_name}", f"Закрыто: {resolver_name}", issue_id))
+    conn.commit()
+    conn.close()
+    return {'status': 'success', 'message': f'Инцидент {issue_id} закрыт'}
 
 @app.get('/api/worker/my-inputs')
 def get_my_worker_inputs(request: Request):

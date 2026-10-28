@@ -45,6 +45,10 @@ document.addEventListener("DOMContentLoaded", () => {
   setupHeadReviewHandler();
   setupBiqsAuditHandler();
   setupAdminHandlers();
+
+  // Start Real-Time Factory Defect & Andon Alert Broadcast Poller (GM BIQS)
+  pollFactoryAlerts();
+  setInterval(pollFactoryAlerts, 4000);
 });
 
 // ==================== TOAST NOTIFICATIONS ====================
@@ -231,6 +235,77 @@ function setupAuthEventListeners() {
 
 // ==================== DASHBOARD INITIALIZATION ====================
 
+function applyRolePermissions(user) {
+  const role = user ? user.role : 'operator';
+
+  const btnWorker = document.getElementById("nav-btn-worker");
+  const btnMaster = document.getElementById("nav-btn-master");
+  const btnDirector = document.getElementById("nav-btn-director");
+  const btnShiftReports = document.getElementById("nav-btn-shift_reports");
+  const btnBiqs = document.getElementById("nav-btn-biqs");
+  const btnAndon = document.getElementById("nav-btn-andon");
+  const btnAdmin = document.getElementById("nav-btn-admin");
+  const roleSwitcher = document.getElementById("nav-role-switcher");
+
+  // First hide all role tabs and switcher
+  [btnWorker, btnMaster, btnDirector, btnShiftReports, btnBiqs, btnAndon, btnAdmin].forEach(b => {
+    if (b) b.classList.add("hidden");
+  });
+  if (roleSwitcher) roleSwitcher.classList.add("hidden");
+
+  let defaultWs = "worker";
+
+  if (role === "operator" || role === "worker") {
+    // 1. WORKER: ONLY Worker desktop + Andon alerts
+    if (btnWorker) btnWorker.classList.remove("hidden");
+    if (btnAndon) btnAndon.classList.remove("hidden");
+    defaultWs = "worker";
+  } 
+  else if (role === "shop_head" || role === "master" || role === "mechanic" || role === "energy_head" || role === "facility_head") {
+    // 2. SHOP HEAD / MASTER: ONLY My Shop + Shift Reports + Andon
+    // (NO Worker counter desk, NO Director executive BI, NO Admin)
+    if (btnMaster) btnMaster.classList.remove("hidden");
+    if (btnShiftReports) btnShiftReports.classList.remove("hidden");
+    if (btnAndon) btnAndon.classList.remove("hidden");
+    defaultWs = "master";
+  } 
+  else if (role === "director") {
+    // 3. PLANT DIRECTOR: Director BI (whole plant) + Shift reports (approval) + Andon
+    // (NO Worker counter desk, NO My Shop single workshop desk, NO Admin)
+    if (btnDirector) btnDirector.classList.remove("hidden");
+    if (btnShiftReports) btnShiftReports.classList.remove("hidden");
+    if (btnAndon) btnAndon.classList.remove("hidden");
+    defaultWs = "director";
+  } 
+  else if (role === "controller" || role === "engineer") {
+    // 4. QUALITY CONTROLLER / BIQS ENGINEER: BIQS Audits + Shift reports + Andon
+    if (btnBiqs) btnBiqs.classList.remove("hidden");
+    if (btnShiftReports) btnShiftReports.classList.remove("hidden");
+    if (btnAndon) btnAndon.classList.remove("hidden");
+    defaultWs = "biqs";
+  } 
+  else if (role === "admin") {
+    // 5. ADMIN: Access to all panels and switcher
+    [btnWorker, btnMaster, btnDirector, btnShiftReports, btnBiqs, btnAndon, btnAdmin].forEach(b => {
+      if (b) b.classList.remove("hidden");
+    });
+    if (roleSwitcher) roleSwitcher.classList.remove("hidden");
+    defaultWs = "admin";
+  } 
+  else if (role === "guest") {
+    // 6. GUEST DEMO: Show primary desks and switcher
+    if (btnWorker) btnWorker.classList.remove("hidden");
+    if (btnMaster) btnMaster.classList.remove("hidden");
+    if (btnDirector) btnDirector.classList.remove("hidden");
+    if (btnAndon) btnAndon.classList.remove("hidden");
+    if (btnShiftReports) btnShiftReports.classList.remove("hidden");
+    if (roleSwitcher) roleSwitcher.classList.remove("hidden");
+    defaultWs = "director";
+  }
+
+  return defaultWs;
+}
+
 async function initDashboardForRole(roleKey) {
   document.getElementById("auth-screen").classList.add("hidden");
   document.getElementById("dashboard-screen").classList.remove("hidden");
@@ -241,15 +316,8 @@ async function initDashboardForRole(roleKey) {
   document.getElementById("user-display-role").textContent = getRoleDisplayName(currentUser ? currentUser.role : "operator");
   document.getElementById("user-avatar-text").textContent = displayName.charAt(0).toUpperCase();
 
-  // Show/Hide Admin Nav Tab
-  const navAdmin = document.getElementById("nav-btn-admin");
-  if (navAdmin) {
-    if (currentUser && currentUser.role === "admin") {
-      navAdmin.classList.remove("hidden");
-    } else {
-      navAdmin.classList.add("hidden");
-    }
-  }
+  // Apply strict role permissions
+  const targetWs = applyRolePermissions(currentUser);
 
   // Load Base Plant Configuration
   await loadDepartments();
@@ -257,7 +325,7 @@ async function initDashboardForRole(roleKey) {
   populateGlobalSelects();
 
   // Switch to the target workspace
-  switchMainWorkspace(roleKey);
+  switchMainWorkspace(roleKey || targetWs);
 }
 
 function getRoleDisplayName(role) {
@@ -279,6 +347,31 @@ function getRoleDisplayName(role) {
 // ==================== MAIN WORKSPACE NAVIGATION ====================
 
 function switchMainWorkspace(wsKey) {
+  const role = currentUser ? currentUser.role : 'operator';
+
+  // Strict Role Permission Guard:
+  if (role === "operator" || role === "worker") {
+    if (wsKey !== "worker" && wsKey !== "andon") {
+      showToast("Доступ ограничен: Работник имеет доступ только к своему рабочему столу", "warning");
+      return;
+    }
+  } else if (role === "shop_head" || role === "master" || role === "mechanic" || role === "energy_head" || role === "facility_head") {
+    if (wsKey === "director" || wsKey === "admin" || wsKey === "worker") {
+      showToast("Доступ ограничен: Начальник цеха управляет только своим цехом и рапортами", "warning");
+      return;
+    }
+  } else if (role === "director") {
+    if (wsKey === "worker" || wsKey === "admin") {
+      showToast("Генеральный директор управляет сводными показателями завода", "info");
+      return;
+    }
+  } else if (role === "controller" || role === "engineer") {
+    if (wsKey === "director" || wsKey === "admin" || wsKey === "worker") {
+      showToast("Служба качества работает с аудитами BIQS и инцидентами", "warning");
+      return;
+    }
+  }
+
   currentWorkspace = wsKey;
 
   // Highlight navigation tab
@@ -421,6 +514,10 @@ function setupWorkerFormHandler() {
       const data = await res.json();
       if (res.ok) {
         showToast(`✅ Зафиксировано: +${payload.units_made} деталей в журнал!`, "success");
+        if (payload.defects_count > 0) {
+          showToast(`🚨 Внимание: Брак (${payload.defects_count} шт) передан на общезаводское табло!`, "warning");
+          pollFactoryAlerts();
+        }
         // Reset counters back to standard default
         adjustWorkerUnits(10 - workerMadeUnits);
         adjustWorkerDefects(0 - workerDefects);
@@ -1613,6 +1710,152 @@ window.onkeydown = function(event) {
     document.querySelectorAll(".modal-overlay").forEach(m => m.classList.add("hidden"));
   }
 };
+
+// ==================== FACTORY-WIDE DEFECT & ANDON BROADCAST SYSTEM (GM BIQS) ====================
+
+let currentFactoryAlerts = { total_active: 0, active_issues: [], recent_defects: [] };
+
+async function pollFactoryAlerts() {
+  try {
+    const res = await fetch("/api/factory/live-alerts");
+    if (!res.ok) return;
+    const data = await res.json();
+    currentFactoryAlerts = data;
+
+    const bar = document.getElementById("factory-live-alert-broadcast");
+    const badge = document.getElementById("fbb-badge-text");
+    const headline = document.getElementById("fbb-headline-text");
+    const counterPill = document.getElementById("fbb-counter-pill");
+    const countNum = document.getElementById("fbb-count-num");
+    const navAndonBadge = document.getElementById("nav-andon-badge");
+
+    const totalActive = data.total_active || 0;
+
+    // Update Nav badge if visible
+    if (navAndonBadge) {
+      if (totalActive > 0) {
+        navAndonBadge.textContent = totalActive;
+        navAndonBadge.style.display = "inline-flex";
+      } else {
+        navAndonBadge.style.display = "none";
+      }
+    }
+
+    if (!bar) return;
+
+    if (totalActive > 0 && data.latest) {
+      // ACTIVE DEFECT / STOP IN FACTORY: EVERYONE SEES IT!
+      bar.className = "factory-broadcast-bar status-alert";
+      if (badge) badge.textContent = "🚨 БРАК / ОСТАНОВКА";
+      if (headline) {
+        const top = data.latest;
+        headline.innerHTML = `
+          <strong>🚨 ВНИМАНИЕ ВСЕМ ЦЕХАМ:</strong> Зафиксирован инцидент на линии 
+          <span style="color:#ffffff; font-weight:800; text-decoration:underline;">[${escapeHtml(top.dept)} • ${escapeHtml(top.line)}]</span>: 
+          ${escapeHtml(top.title)} 
+          ${top.reported_by ? `• Сообщил: <em>${escapeHtml(top.reported_by)}</em>` : ''}
+        `;
+      }
+      if (counterPill) {
+        counterPill.classList.remove("hidden");
+        if (countNum) countNum.textContent = totalActive;
+      }
+    } else {
+      // NORMAL SAFE STATE
+      bar.className = "factory-broadcast-bar status-normal";
+      if (badge) badge.textContent = "В НОРМЕ";
+      if (headline) {
+        headline.innerHTML = `🟢 <strong>Завод работает в штатном режиме:</strong> Все производственные линии запущены. Брака и аварийных остановок нет.`;
+      }
+      if (counterPill) counterPill.classList.add("hidden");
+    }
+  } catch (err) {
+    // Network/offline silent catch
+  }
+}
+
+function openFactoryAlertsDrawer() {
+  const modal = document.getElementById("modal-factory-alerts");
+  if (!modal) return;
+
+  const countBadge = document.getElementById("fbb-modal-active-count");
+  if (countBadge) countBadge.textContent = currentFactoryAlerts.total_active || 0;
+
+  const listEl = document.getElementById("factory-alerts-modal-list");
+  if (listEl) {
+    const issues = currentFactoryAlerts.active_issues || [];
+    if (!issues.length) {
+      listEl.innerHTML = `
+        <div style="padding:16px; text-align:center; background:rgba(16, 185, 129, 0.08); border:1px solid rgba(16, 185, 129, 0.2); border-radius:8px; color:#34d399; font-weight:600;">
+          🟢 Открытых аварийных остановок и брака на линиях завода сейчас нет.
+        </div>
+      `;
+    } else {
+      listEl.innerHTML = issues.map(iss => {
+        const isCritical = iss.severity === "critical_stop" || (iss.downtime_minutes && iss.downtime_minutes >= 30);
+        return `
+          <div class="factory-alert-item-card ${isCritical ? '' : 'warning-level'}">
+            <div class="faic-left">
+              <div class="faic-top">
+                <span class="badge-tag ${isCritical ? 'badge-red' : 'badge-amber'}">${isCritical ? '🚨 КРИТИЧЕСКИЙ БРАК / СТОП' : '⚠️ ПРЕДУПРЕЖДЕНИЕ'}</span>
+                <span class="faic-line">${escapeHtml(iss.dept_name_ru || iss.department_id)} • Линия: ${escapeHtml(iss.line_name)}</span>
+              </div>
+              <div class="faic-title">${escapeHtml(iss.defect_type)}</div>
+              <div class="faic-meta">
+                <span><i class="fa-solid fa-user"></i> ${escapeHtml(iss.reported_by || 'Оператор')}</span>
+                <span style="margin:0 6px;">•</span>
+                <span><i class="fa-regular fa-clock"></i> Время: ${iss.created_at ? iss.created_at.slice(11, 16) : '--:--'}</span>
+                ${iss.downtime_minutes ? `<span style="margin:0 6px;">•</span><strong style="color:#ef4444;">Простой: ${iss.downtime_minutes} мин</strong>` : ''}
+              </div>
+            </div>
+            <div>
+              <button type="button" class="btn-resolve-alert" onclick="resolveAlertFromModal('${iss.id}')">
+                <i class="fa-solid fa-check"></i> Устранено
+              </button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+  }
+
+  const tbody = document.getElementById("factory-defects-modal-rows");
+  if (tbody) {
+    const defects = currentFactoryAlerts.recent_defects || [];
+    if (!defects.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:16px; color:#94a3b8;">За сегодня записей с браком нет.</td></tr>';
+    } else {
+      tbody.innerHTML = defects.map(d => `
+        <tr>
+          <td style="font-weight:700; font-size:12px;">${d.created_at ? d.created_at.slice(11, 16) : '--:--'}</td>
+          <td>${escapeHtml(d.dept_name_ru || d.department_id)}</td>
+          <td><strong>${escapeHtml(d.line_name)}</strong></td>
+          <td>${escapeHtml(d.article)}</td>
+          <td><span class="badge-tag badge-red" style="font-weight:800;">${d.defects_count} шт</span></td>
+          <td>${escapeHtml(d.defect_reason || '—')}</td>
+          <td>${escapeHtml(d.worker_name || 'Оператор')}</td>
+        </tr>
+      `).join("");
+    }
+  }
+
+  modal.classList.remove("hidden");
+}
+
+async function resolveAlertFromModal(issueId) {
+  try {
+    const res = await fetch(`/api/factory/resolve-alert/${encodeURIComponent(issueId)}`, { method: "POST" });
+    if (res.ok) {
+      showToast("✅ Инцидент отмечен как устранённый!", "success");
+      await pollFactoryAlerts();
+      openFactoryAlertsDrawer();
+    } else {
+      showToast("Ошибка при закрытии инцидента", "error");
+    }
+  } catch (err) {
+    showToast("Ошибка соединения", "error");
+  }
+}
 
 // Language Toggle
 function setAppLanguage(lang) {

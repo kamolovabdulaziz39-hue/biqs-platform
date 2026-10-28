@@ -241,40 +241,40 @@
     <nav class="workspace-nav-bar">
       <div class="ws-tabs-left">
         <!-- 1. Рабочий стол Работника -->
-        <button id="nav-btn-worker" class="ws-nav-btn active" onclick="switchMainWorkspace('worker')">
+        <button id="nav-btn-worker" class="ws-nav-btn active hidden" onclick="switchMainWorkspace('worker')">
           <i class="fa-solid fa-user-gear"></i>
-          <span>Рабочий стол Работника</span>
+          <span>Рабочий стол</span>
         </button>
 
         <!-- 2. Рабочий стол Начальника цеха -->
-        <button id="nav-btn-master" class="ws-nav-btn" onclick="switchMainWorkspace('master')">
+        <button id="nav-btn-master" class="ws-nav-btn hidden" onclick="switchMainWorkspace('master')">
           <i class="fa-solid fa-industry"></i>
-          <span>Рабочий стол Начальника цеха</span>
+          <span>Мой цех</span>
         </button>
 
         <!-- 3. Рабочий стол Генерального директора -->
-        <button id="nav-btn-director" class="ws-nav-btn" onclick="switchMainWorkspace('director')">
+        <button id="nav-btn-director" class="ws-nav-btn hidden" onclick="switchMainWorkspace('director')">
           <i class="fa-solid fa-chart-pie"></i>
-          <span>Рабочий стол Директора (Весь завод)</span>
+          <span>Гендиректор BI (Весь завод)</span>
         </button>
 
-        <!-- 4. Лента Andon -->
-        <button id="nav-btn-andon" class="ws-nav-btn" onclick="switchMainWorkspace('andon')">
-          <i class="fa-solid fa-tower-broadcast"></i>
-          <span>Лента Andon</span>
-          <span id="nav-andon-badge" class="badge-tag badge-red" style="display:none;">0</span>
-        </button>
-
-        <!-- 5. Сменные рапорты -->
-        <button id="nav-btn-shift_reports" class="ws-nav-btn" onclick="switchMainWorkspace('shift_reports')">
+        <!-- 4. Сменные рапорты -->
+        <button id="nav-btn-shift_reports" class="ws-nav-btn hidden" onclick="switchMainWorkspace('shift_reports')">
           <i class="fa-solid fa-file-invoice"></i>
           <span>Сменные рапорты</span>
         </button>
 
-        <!-- 6. Стандарты BIQS -->
-        <button id="nav-btn-biqs" class="ws-nav-btn" onclick="switchMainWorkspace('biqs')">
+        <!-- 5. Стандарты BIQS -->
+        <button id="nav-btn-biqs" class="ws-nav-btn hidden" onclick="switchMainWorkspace('biqs')">
           <i class="fa-solid fa-clipboard-check"></i>
           <span>Стандарты BIQS</span>
+        </button>
+
+        <!-- 6. Лента инцидентов Andon -->
+        <button id="nav-btn-andon" class="ws-nav-btn hidden" onclick="switchMainWorkspace('andon')">
+          <i class="fa-solid fa-tower-broadcast"></i>
+          <span>Лента Andon</span>
+          <span id="nav-andon-badge" class="badge-tag badge-red" style="display:none;">0</span>
         </button>
 
         <!-- 7. Админ панель -->
@@ -284,16 +284,41 @@
         </button>
       </div>
 
-      <!-- Quick Fast Switcher -->
-      <div class="ws-tabs-right">
+      <!-- Quick Fast Switcher (Visible ONLY for Admin / Demo) -->
+      <div class="ws-tabs-right hidden" id="nav-role-switcher">
         <div class="role-switcher-pill">
-          <span class="role-switcher-label"><i class="fa-solid fa-arrows-spin"></i> Вид:</span>
-          <button type="button" class="role-switch-btn active" id="pill-ws-worker" onclick="switchMainWorkspace('worker')">Работник</button>
+          <span class="role-switcher-label"><i class="fa-solid fa-arrows-spin"></i> Режим:</span>
+          <button type="button" class="role-switch-btn active" id="pill-ws-worker" onclick="switchMainWorkspace('worker')">Рабочий</button>
           <button type="button" class="role-switch-btn" id="pill-ws-master" onclick="switchMainWorkspace('master')">Цех</button>
           <button type="button" class="role-switch-btn" id="pill-ws-director" onclick="switchMainWorkspace('director')">Директор</button>
         </div>
       </div>
     </nav>
+
+    <!-- ==================== FACTORY-WIDE REAL-TIME ALERT BROADCAST (GM BIQS) ==================== -->
+    <section id="factory-live-alert-broadcast" class="factory-broadcast-bar status-normal" aria-live="polite">
+      <div class="fbb-inner">
+        <div class="fbb-left">
+          <div class="fbb-indicator">
+            <span class="fbb-beacon" id="fbb-beacon-dot"></span>
+            <span id="fbb-badge-text" class="fbb-badge">В НОРМЕ</span>
+          </div>
+          <div class="fbb-headline" id="fbb-headline-text">
+            🟢 <strong>Завод работает в штатном режиме:</strong> Все производственные линии запущены. Брака и аварийных остановок нет.
+          </div>
+        </div>
+        <div class="fbb-right">
+          <div id="fbb-counter-pill" class="fbb-counter-pill hidden">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span id="fbb-count-num">0</span> инцидентов
+          </div>
+          <button type="button" class="btn-fbb-details" onclick="openFactoryAlertsDrawer()">
+            <i class="fa-solid fa-bullhorn"></i>
+            <span>Лента брака и инцидентов</span>
+          </button>
+        </div>
+      </div>
+    </section>
 
     <!-- MAIN DYNAMIC WORKSPACES CONTAINER -->
     <main class="dashboard-main-container">
@@ -1225,6 +1250,59 @@
           <button type="submit" class="btn-action-primary">Сгенерировать код</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- 9. MODAL: FACTORY-WIDE DEFECTS & ALERTS BROADCAST DRAWER -->
+  <div id="modal-factory-alerts" class="modal-overlay hidden">
+    <div class="modal-card modal-lg">
+      <button class="modal-close" onclick="closeModal('modal-factory-alerts')"><i class="fa-solid fa-xmark"></i></button>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+        <div style="width:40px; height:40px; border-radius:10px; background:rgba(239, 68, 68, 0.2); display:flex; align-items:center; justify-content:center; color:#ef4444; font-size:18px;">
+          <i class="fa-solid fa-bullhorn"></i>
+        </div>
+        <div>
+          <h3 class="modal-header-title" style="margin:0;">Единая заводская лента брака и инцидентов</h3>
+          <div style="font-size:12px; color:var(--text-muted);">Стандарт GM BIQS: Полная прозрачность качества — любой брак на любой линии видят все службы завода</div>
+        </div>
+      </div>
+
+      <div class="factory-alerts-container">
+        <h4 style="font-size:13px; font-weight:800; color:#f8fafc; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+          <i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i>
+          <span>Активные остановки и нерешённый брак:</span>
+          <span id="fbb-modal-active-count" class="badge-tag badge-red">0</span>
+        </h4>
+        <div id="factory-alerts-modal-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;"></div>
+
+        <h4 style="font-size:13px; font-weight:800; color:#cbd5e1; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+          <i class="fa-solid fa-clipboard-list" style="color:var(--primary-blue);"></i>
+          <span>Последние зафиксированные дефекты за смену:</span>
+        </h4>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Время</th>
+                <th>Цех</th>
+                <th>Линия</th>
+                <th>Деталь</th>
+                <th>Брак (шт)</th>
+                <th>Причина</th>
+                <th>Оператор</th>
+              </tr>
+            </thead>
+            <tbody id="factory-defects-modal-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-actions-row" style="margin-top:20px;">
+        <button type="button" class="btn-cancel" onclick="closeModal('modal-factory-alerts')">Закрыть</button>
+        <button type="button" class="btn-action-primary" onclick="pollFactoryAlerts(); showToast('Сводка инцидентов обновлена', 'info');">
+          <i class="fa-solid fa-arrows-rotate"></i> Обновить ленту
+        </button>
+      </div>
     </div>
   </div>
 
